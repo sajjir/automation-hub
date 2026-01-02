@@ -31,7 +31,7 @@ class Hub_Bridge {
 		$rules = get_option( 'hub_rules', [] );
 		$webhooks = get_option( 'hub_webhooks', [] );
 		
-		// تبدیل لیست وب‌هوک به فرمت Key-Value برای دسترسی سریع
+		// تبدیل لیست وب‌هوک به فرمت Key-Value
 		$webhook_map = [];
 		foreach($webhooks as $wh) $webhook_map[$wh['id']] = $wh;
 
@@ -39,12 +39,12 @@ class Hub_Bridge {
 			// 1. بررسی تریگر اصلی
 			if ( $rule['trigger'] !== $trigger_type ) continue;
 
-			// 2. بررسی ساب-تریگر (مثلاً وضعیت خاص سفارش)
+			// 2. بررسی ساب-تریگر (وضعیت سفارش)
 			if ( $trigger_type === 'order_status' && !empty($rule['sub_trigger']) ) {
 				if ( $rule['sub_trigger'] !== $sub_trigger ) continue;
 			}
 
-			// 3. بررسی شرط‌های پیشرفته (Advanced Conditions)
+			// 3. بررسی شرط‌های پیشرفته
 			if ( !empty($rule['condition_active']) ) {
 				if ( !self::check_complex_condition( $rule, $entity ) ) continue;
 			}
@@ -55,8 +55,11 @@ class Hub_Bridge {
 
 			$target_webhook = $webhook_map[$webhook_id];
 
-			// 5. آماده‌سازی داده‌ها (Hybrid Payload)
+			// 5. آماده‌سازی داده‌ها
 			$payload = self::build_payload( $entity, $rule['message'] );
+            
+            // اضافه کردن URL وب‌هوک مقصد به payload
+            $payload['_webhook_url'] = $target_webhook['url'];
 
 			// 6. افزودن به صف
 			Hub_Queue::push( $trigger_type, $payload );
@@ -65,37 +68,32 @@ class Hub_Bridge {
 
 	// --- بررسی شرط‌های پیچیده ---
 	private static function check_complex_condition( $rule, $entity ) {
-		// فعلاً فقط برای سفارش پیاده‌سازی شده (طبق درخواست شما)
 		if ( !is_a( $entity, 'WC_Order' ) ) return true;
 
-		$key = $rule['condition_key'] ?? ''; // مثلاً pa_guarantee
-		$val = $rule['condition_val'] ?? ''; // مثلاً طلایی
+		$key = $rule['condition_key'] ?? ''; 
+		$val = $rule['condition_val'] ?? ''; 
 
-		if ( empty($key) || empty($val) ) return true; // شرط ناقص است، رد شویم (یا سخت بگیریم؟)
+		if ( empty($key) || empty($val) ) return true;
 
-		// حلقه روی اقلام سفارش
 		foreach ( $entity->get_items() as $item ) {
 			$product = $item->get_product();
 			if ( $product ) {
-				// دریافت ویژگی
 				$attr_val = $product->get_attribute( $key );
-				// بررسی "شامل بودن" (Contains)
 				if ( strpos( $attr_val, $val ) !== false ) {
-					return true; // شرط برقرار شد!
+					return true; 
 				}
 			}
 		}
-
-		return false; // هیچ محصولی شرط را نداشت
+		return false; 
 	}
 
-	// --- ساخت Payload هیبریدی ---
+	// --- ساخت Payload ---
 	private static function build_payload( $entity, $raw_message ) {
 		$data = [];
 		$parsed_message = '';
 
 		if ( is_a( $entity, 'WC_Order' ) ) {
-			// داده‌های خام سفارش (برای n8n)
+			// داده‌های خام سفارش
 			$data = [
 				'id' => $entity->get_id(),
 				'total' => $entity->get_total(),
@@ -105,7 +103,6 @@ class Hub_Bridge {
 				'billing' => $entity->get_address('billing'),
                 'items' => []
 			];
-            // افزودن آیتم‌ها به جیسون
             foreach($entity->get_items() as $item) {
                 $data['items'][] = [
                     'name' => $item->get_name(),
@@ -114,12 +111,10 @@ class Hub_Bridge {
                 ];
             }
 			
-			// پارس کردن پیام متنی (برای تلگرام)
-			// اینجا از تابع sajj_parse_shortcodes که قبلاً داشتید استفاده می‌کنیم (یا بازنویسی شده‌اش)
+			// تبدیل شورت‌کدها (اینجا تابع جدید را صدا می‌زنیم)
 			$parsed_message = self::parse_order_shortcodes( $raw_message, $entity );
 
 		} elseif ( is_a( $entity, 'WP_User' ) ) {
-			// داده‌های کاربر
 			$data = [
 				'id' => $entity->ID,
 				'email' => $entity->user_email,
@@ -134,19 +129,140 @@ class Hub_Bridge {
 		}
 
 		return [
-			'json_data' => $data,       // دیتای فنی برای n8n
-			'message'   => $parsed_message // پیام آماده برای تلگرام
+			'json_data' => $data,
+			'message'   => $parsed_message
 		];
 	}
 
-    // نسخه داخلی پارسر شورت‌کد سفارش (خلاصه شده برای این فایل)
+    /**
+     * پارسر قدرتمند شورت‌کدها (ادغام شده داخل کلاس)
+     */
     private static function parse_order_shortcodes($text, $order) {
-        // ... (کد پارسر شورت‌کد که قبلاً نوشتیم اینجا قرار می‌گیرد)
-        // برای جلوگیری از شلوغی، فرض می‌کنیم تابع sajj_parse_shortcodes شما در دسترس است
-        // یا کدش را اینجا کپی می‌کنید.
-        if(function_exists('sajj_parse_shortcodes')) {
-            return sajj_parse_shortcodes($text, $order);
+        if (empty($text)) return '';
+
+        // تاریخ و ساعت
+        $date_created = $order->get_date_created();
+        $formatted_date = $date_created ? $date_created->date_i18n('Y/m/d') : '';
+        $formatted_time = $date_created ? $date_created->date_i18n('H:i') : '';
+
+        // تمیزکننده قیمت
+        $clean_price = function($html_price) {
+            return trim(strip_tags(html_entity_decode($html_price)));
+        };
+
+        $vars = [
+            '{order_id}' => $order->get_id(),
+            '{status}'   => wc_get_order_status_name($order->get_status()),
+            '{date}'     => $formatted_date,
+            '{time}'     => $formatted_time,
+            '{total}'    => $clean_price(wc_price($order->get_total())), 
+            '{total_raw}'=> $order->get_total(),
+            '{payment_method}' => $order->get_payment_method_title(),
+            '{transaction_id}' => $order->get_transaction_id(),
+            '{full_name}' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
+            '{phone}'     => $order->get_billing_phone(),
+            '{city}'      => $order->get_billing_city(),
+            '{state}'     => $order->get_billing_state(),
+            '{address}'   => $order->get_billing_address_1() . ' ' . $order->get_billing_address_2(),
+            '{customer_note}' => $order->get_customer_note(),
+            '{shipping_method}' => $order->get_shipping_method(),
+            '{shipping_cost}'   => $clean_price(wc_price($order->get_shipping_total())),
+        ];
+
+        // ۱. لیست خلاصه
+        if (strpos($text, '{items_summary}') !== false) {
+            $lines = [];
+            foreach ($order->get_items() as $item) {
+                $lines[] = "▪️ " . $item->get_name() . " (×" . $item->get_quantity() . ")";
+            }
+            $vars['{items_summary}'] = implode("\n", $lines);
         }
-        return $text;
+
+        // ۲. لیست کامل
+        if (strpos($text, '{items_detailed}') !== false) {
+            $lines = [];
+            foreach ($order->get_items() as $item) {
+                $price_clean = $clean_price(wc_price($item->get_total()));
+                $lines[] = "🛒 " . $item->get_name() . "\n   تعداد: " . $item->get_quantity() . " | قیمت کل: " . $price_clean;
+            }
+            $vars['{items_detailed}'] = implode("\n----------------\n", $lines);
+        }
+
+        // ۳. اسکرپر هوشمند (شامل تطبیق واریشن)
+        if (strpos($text, '{_scrape_raw_result_}') !== false) {
+            $scrape_list = "";
+
+            foreach ($order->get_items() as $item) {
+                $product = $item->get_product(); 
+                
+                if ($product) {
+                    $price_display = "قیمت مبدا ندارد ❌";
+                    $found_row = null;
+
+                    // شناسایی والد
+                    $parent_id = $product->is_type('variation') ? $product->get_parent_id() : $product->get_id();
+                    
+                    // دریافت دیتای خام
+                    $raw_json = get_post_meta($parent_id, '_last_scrape_raw_result', true);
+                    $scraped_rows = [];
+
+                    if ($raw_json) {
+                         $decoded = json_decode($raw_json, true);
+                         if (!$decoded && is_string($raw_json)) $decoded = json_decode(stripslashes($raw_json), true);
+                         
+                         if ($decoded) {
+                             if (!isset($decoded[0])) $scraped_rows = [$decoded];
+                             else $scraped_rows = $decoded;
+                         }
+                    }
+
+                    // موتور تطبیق (Matching Engine)
+                    if (!empty($scraped_rows) && is_array($scraped_rows)) {
+                        
+                        if (!$product->is_type('variation')) {
+                            $found_row = reset($scraped_rows);
+                        } else {
+                            foreach ($scraped_rows as $row) {
+                                $is_match = true;
+                                foreach ($row as $key => $val) {
+                                    if (strpos($key, 'pa_') === 0) {
+                                        $wc_attr_val = $product->get_attribute($key);
+                                        $v1 = trim((string)$wc_attr_val);
+                                        $v2 = trim((string)$val);
+                                        if ($v1 !== $v2) {
+                                            $is_match = false;
+                                            break; 
+                                        }
+                                    }
+                                }
+                                if ($is_match) {
+                                    $found_row = $row;
+                                    break; 
+                                }
+                            }
+                        }
+                    }
+
+                    // استخراج قیمت
+                    if ($found_row) {
+                        $p = null;
+                        if (isset($found_row['price'])) $p = $found_row['price'];
+                        elseif (isset($found_row['amount'])) $p = $found_row['amount'];
+                        elseif (isset($found_row['lowest_price'])) $p = $found_row['lowest_price'];
+
+                        if ($p) {
+                            $price_display = number_format((float)$p) . " تومان ✅";
+                        }
+                    }
+                    
+                    $scrape_list .= "📦 " . $product->get_name() . "\n   💰 قیمت خرید: " . $price_display . "\n";
+                }
+            }
+            
+            if (empty($scrape_list)) $scrape_list = "هیچ داده اسکرپی یافت نشد.";
+            $vars['{_scrape_raw_result_}'] = $scrape_list;
+        }
+
+        return str_replace(array_keys($vars), array_values($vars), $text);
     }
 }

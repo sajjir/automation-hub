@@ -29,7 +29,7 @@ class Hub_Admin {
 		// جاوااسکریپت (برای Repeater و تغییرات داینامیک)
 		wp_enqueue_script( 'hub-admin-js', HUB_PLUGIN_URL . 'admin/js/hub-admin.js', array( 'jquery' ), HUB_VERSION, true );
         
-        // ارسال داده‌ها به JS
+        // ارسال داده‌ها به JS (برای لیست وضعیت‌های ووکامرس)
         wp_localize_script( 'hub-admin-js', 'hubData', array(
             'statuses' => function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [],
         ));
@@ -100,7 +100,7 @@ class Hub_Admin {
         if(isset($_POST['rules'])) {
             $clean_rules = [];
             foreach($_POST['rules'] as $rule) {
-                // پاکسازی آرایه‌ها
+                // پاکسازی داده‌ها
                 $rule['message'] = wp_kses_post($rule['message']);
                 $clean_rules[] = $rule;
             }
@@ -130,7 +130,7 @@ class Hub_Admin {
                             <?php foreach($webhooks as $index => $wh) self::render_webhook_row($index, $wh); ?>
                         <?php endif; ?>
                     </div>
-                    <p class="description">می‌توانید بی‌نهایت وب‌هوک تعریف کنید (مثلاً: حسابداری، انبار، مدیریت) و در کمپین‌ها استفاده کنید.</p>
+                    <p class="description">می‌توانید بی‌نهایت وب‌هوک تعریف کنید (مثلاً: حسابداری، انبار، تلگرام) و در کمپین‌ها استفاده کنید.</p>
                 </div>
             </div>
             
@@ -223,7 +223,6 @@ class Hub_Admin {
                             <option value="order_status" <?php selected($trigger, 'order_status'); ?>>تغییر وضعیت سفارش</option>
                             <option value="order_created" <?php selected($trigger, 'order_created'); ?>>ثبت سفارش جدید</option>
                             <option value="user_register" <?php selected($trigger, 'user_register'); ?>>ثبت‌نام کاربر جدید</option>
-                            <option value="product_low_stock" <?php selected($trigger, 'product_low_stock'); ?>>کمبود موجودی محصول</option>
                         </select>
                         
                         <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select" style="<?php echo $trigger !== 'order_status' ? 'display:none' : ''; ?>">
@@ -238,10 +237,10 @@ class Hub_Admin {
                 <div class="rule-section logic-section">
                     <label>
                         <input type="checkbox" name="rules[<?php echo $index; ?>][condition_active]" class="condition-toggle" value="1" <?php echo $condition_active; ?>>
-                        ۲. شرط خاصی بررسی شود؟ (مثلاً گارانتی خاص)
+                        ۲. شرط خاصی بررسی شود؟ (Advanced Logic)
                     </label>
                     <div class="condition-box" style="<?php echo empty($condition_active) ? 'display:none' : ''; ?>">
-                        <p class="description">اگر <strong>حداقل یکی</strong> از اقلام سفارش شرط زیر را داشت:</p>
+                        <p class="description">اگر <strong>حداقل یکی</strong> از اقلام سفارش ویژگی زیر را داشت:</p>
                         <div class="flex-row">
                             <input type="text" name="rules[<?php echo $index; ?>][condition_key]" value="<?php echo esc_attr($condition_key); ?>" placeholder="نام ویژگی (مثلاً: pa_guarantee)">
                             <span>شامل باشد:</span>
@@ -271,9 +270,6 @@ class Hub_Admin {
                             </div>
                             <div class="guide guide-user" style="display:none">
                                 <small>متغیرها: <code>{user_id}</code> <code>{user_email}</code> <code>{user_name}</code></small>
-                            </div>
-                            <div class="guide guide-product" style="display:none">
-                                <small>متغیرها: <code>{product_name}</code> <code>{stock_qty}</code> <code>{product_sku}</code></small>
                             </div>
                         </div>
                     </div>

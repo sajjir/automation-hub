@@ -1,6 +1,6 @@
 jQuery(document).ready(function($) {
     
-    // --- مدیریت Repeater وب‌هوک‌ها ---
+    // --- Repeater: اضافه کردن وب‌هوک ---
     $('#add-webhook').on('click', function() {
         var template = $('#webhook-template').html();
         var index = $('.webhook-row').length;
@@ -8,7 +8,7 @@ jQuery(document).ready(function($) {
         $('#webhooks-container').append(template);
     });
 
-    // --- مدیریت Repeater سناریوها (Rules) ---
+    // --- Repeater: اضافه کردن سناریو ---
     $('#add-rule').on('click', function() {
         var template = $('#rule-template').html();
         var index = $('.rule-row').length;
@@ -16,7 +16,7 @@ jQuery(document).ready(function($) {
         $('#rules-container').append(template);
         $('.no-data-msg').remove();
         
-        // تریگر کردن رویداد تغییر برای نمایش راهنمای پیش‌فرض
+        // تریگر کردن برای نمایش حالت پیش‌فرض
         $('#rules-container .rule-row:last .trigger-select').trigger('change');
     });
 
@@ -27,12 +27,12 @@ jQuery(document).ready(function($) {
         }
     });
 
-    // --- منطق داینامیک سناریوها ---
+    // --- منطق داینامیک سناریوها (نمایش شرط‌ها بر اساس تریگر) ---
     $(document).on('change', '.trigger-select', function() {
         var val = $(this).val();
         var row = $(this).closest('.rule-row');
         
-        // 1. نمایش/مخفی کردن ساب-تریگر (وضعیت سفارش)
+        // 1. نمایش/مخفی کردن ساب-تریگر (فقط برای وضعیت سفارش)
         if(val === 'order_status') {
             row.find('.sub-trigger-select').show();
         } else {
@@ -45,8 +45,6 @@ jQuery(document).ready(function($) {
             row.find('.guide-order').show();
         } else if(val.startsWith('user')) {
             row.find('.guide-user').show();
-        } else if(val.startsWith('product')) {
-            row.find('.guide-product').show();
         }
     });
 
