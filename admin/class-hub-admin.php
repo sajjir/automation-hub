@@ -22,16 +22,21 @@ class Hub_Admin {
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'connections';
 		if ( isset( $_POST['hub_save_settings'] ) && check_admin_referer( 'hub_save_nonce' ) ) {
             self::save_settings();
-            echo '<div class="notice notice-success is-dismissible"><p>تنظیمات ذخیره شد.</p></div>';
+            echo '<div class="notice notice-success is-dismissible"><p>تنظیمات با موفقیت ذخیره شد.</p></div>';
         }
         ?>
 		<div class="wrap hub-wrap">
-            <div class="hub-header"><h1>🚀 هاب اتوماسیون <span class="hub-version">v<?php echo HUB_VERSION; ?></span></h1></div>
+            <div class="hub-header">
+                <h1>🚀 هاب اتوماسیون <span class="hub-version">v<?php echo HUB_VERSION; ?></span></h1>
+                <a href="https://n8n.io" target="_blank" class="button">مستندات n8n</a>
+            </div>
+			
 			<nav class="nav-tab-wrapper hub-nav">
-				<a href="?page=automation-hub&tab=connections" class="nav-tab <?php echo $active_tab === 'connections' ? 'nav-tab-active' : ''; ?>">🔌 اتصالات</a>
-				<a href="?page=automation-hub&tab=campaigns" class="nav-tab <?php echo $active_tab === 'campaigns' ? 'nav-tab-active' : ''; ?>">📢 سناریوها (Rules)</a>
-				<a href="?page=automation-hub&tab=logs" class="nav-tab <?php echo $active_tab === 'logs' ? 'nav-tab-active' : ''; ?>">📜 لاگ‌ها</a>
+				<a href="?page=automation-hub&tab=connections" class="nav-tab <?php echo $active_tab === 'connections' ? 'nav-tab-active' : ''; ?>"><span class="dashicons dashicons-admin-links"></span> اتصالات</a>
+				<a href="?page=automation-hub&tab=campaigns" class="nav-tab <?php echo $active_tab === 'campaigns' ? 'nav-tab-active' : ''; ?>"><span class="dashicons dashicons-migrate"></span> سناریوها (Rules)</a>
+				<a href="?page=automation-hub&tab=logs" class="nav-tab <?php echo $active_tab === 'logs' ? 'nav-tab-active' : ''; ?>"><span class="dashicons dashicons-list-view"></span> لاگ‌ها</a>
 			</nav>
+
 			<form method="post" class="hub-body">
                 <?php wp_nonce_field( 'hub_save_nonce' ); ?>
 				<?php
@@ -87,7 +92,6 @@ class Hub_Admin {
 		$sms_active = Hub_Persian_WC::is_active();
 		$sms_config = Hub_Persian_WC::get_sms_config();
         
-        // جلوگیری از ارور PHP Warning
         $provider_name = is_array($sms_config) && isset($sms_config['provider']) ? $sms_config['provider'] : 'نامشخص';
         $sender_num = is_array($sms_config) && isset($sms_config['number']) ? $sms_config['number'] : '---';
 		?>
@@ -96,7 +100,7 @@ class Hub_Admin {
                 <div class="hub-card">
                     <div class="hub-card-header">
                         <h3>لیست اتصالات (Webhooks & Bots)</h3>
-                        <button type="button" class="button" id="add-webhook">+ افزودن</button>
+                        <button type="button" class="button" id="add-webhook"><span class="dashicons dashicons-plus"></span> افزودن</button>
                     </div>
                     <div class="hub-card-body" id="webhooks-container">
                         <?php if(empty($webhooks)): self::render_webhook_row(0, [], true); else: foreach($webhooks as $i => $wh) self::render_webhook_row($i, $wh); endif; ?>
@@ -113,7 +117,7 @@ class Hub_Admin {
                         <p><strong>وضعیت پیامک (Persian WC):</strong></p>
                         <?php if ( $sms_active ) : ?>
                             <span class="badge success">✅ متصل به: <?php echo esc_html($provider_name); ?></span>
-                            <br><small>شماره فرستنده: <?php echo esc_html($sender_num); ?></small>
+                            <br><small style="color:#666; margin-top:5px; display:block">شماره فرستنده: <?php echo esc_html($sender_num); ?></small>
                         <?php else : ?>
                             <span class="badge error">❌ افزونه پیامک ووکامرس فارسی یافت نشد</span>
                         <?php endif; ?>
@@ -136,14 +140,14 @@ class Hub_Admin {
         $type = $data['type'] ?? 'webhook';
         ?>
         <div class="repeater-row webhook-row">
-            <div class="row-actions"><span class="dashicons dashicons-trash remove-row"></span></div>
             <div class="row-fields">
-                <input type="text" name="webhooks[<?php echo $index; ?>][name]" value="<?php echo esc_attr($data['name']??''); ?>" placeholder="نام (مثلاً: ربات مدیر)" class="input-name">
-                <select name="webhooks[<?php echo $index; ?>][type]" class="input-type">
+                <input type="text" name="webhooks[<?php echo $index; ?>][name]" value="<?php echo esc_attr($data['name']??''); ?>" placeholder="نام (مثلاً: ربات مدیر)" class="input-name" style="width: 25%;">
+                <select name="webhooks[<?php echo $index; ?>][type]" class="input-type" style="width: 20%;">
                     <option value="webhook" <?php selected($type, 'webhook'); ?>>n8n Webhook</option>
                     <option value="telegram" <?php selected($type, 'telegram'); ?>>Telegram Bot</option>
                 </select>
-                <input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="URL یا Token" class="input-url">
+                <input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="URL یا Token" class="input-url" style="width: 50%;">
+                <span class="dashicons dashicons-trash remove-row" title="حذف"></span>
             </div>
         </div>
         <?php
@@ -157,10 +161,10 @@ class Hub_Admin {
         <div class="hub-card">
             <div class="hub-card-header">
                 <h3>سناریوهای فعال</h3>
-                <button type="button" class="button button-primary" id="add-rule">+ سناریوی جدید</button>
+                <button type="button" class="button button-primary" id="add-rule"><span class="dashicons dashicons-plus"></span> سناریوی جدید</button>
             </div>
             <div class="hub-card-body" id="rules-container">
-                <?php if(empty($rules)): ?><p class="no-data-msg">هنوز هیچ سناریویی تعریف نکرده‌اید.</p><?php else: foreach($rules as $i => $rule) self::render_rule_row($i, $rule, $webhooks, $wc_statuses); endif; ?>
+                <?php if(empty($rules)): ?><p class="no-data-msg">هنوز هیچ سناریویی تعریف نکرده‌اید. دکمه بالا را بزنید!</p><?php else: foreach($rules as $i => $rule) self::render_rule_row($i, $rule, $webhooks, $wc_statuses); endif; ?>
             </div>
         </div>
         <template id="rule-template"><?php self::render_rule_row('INDEX', [], $webhooks, $wc_statuses, true); ?></template>
@@ -172,21 +176,28 @@ class Hub_Admin {
         $active_sms = !empty($data['active_sms']);
         $active_tg = !empty($data['active_tg']);
         ?>
-        <div class="repeater-row rule-row">
+        <div class="repeater-row rule-row <?php echo $is_template ? 'open' : ''; ?>">
             <div class="rule-header">
-                <span class="rule-title">سناریو #<?php echo $is_template ? 'جدید' : $index+1; ?></span>
-                <span class="dashicons dashicons-trash remove-row"></span>
+                <span class="rule-title">
+                    <span class="dashicons dashicons-flow-line"></span> 
+                    سناریو #<span class="rule-idx"><?php echo $is_template ? 'جدید' : $index+1; ?></span>
+                </span>
+                <div style="display:flex; align-items:center; gap:10px;">
+                    <span class="dashicons dashicons-trash remove-row" title="حذف"></span>
+                    <span class="dashicons dashicons-arrow-down-alt2 rule-toggle-icon"></span>
+                </div>
             </div>
+
             <div class="rule-body">
                 <div class="rule-section trigger-section">
-                    <label>۱. شرط اجرا (Trigger)</label>
+                    <label><span class="dashicons dashicons-controls-play"></span> ۱. شرط اجرا (Trigger)</label>
                     <div class="flex-row">
-                        <select name="rules[<?php echo $index; ?>][trigger]" class="trigger-select">
+                        <select name="rules[<?php echo $index; ?>][trigger]" class="trigger-select full-width">
                             <option value="order_status" <?php selected($data['trigger']??'', 'order_status'); ?>>تغییر وضعیت سفارش</option>
                             <option value="order_created" <?php selected($data['trigger']??'', 'order_created'); ?>>ثبت سفارش جدید</option>
                             <option value="user_register" <?php selected($data['trigger']??'', 'user_register'); ?>>ثبت‌نام کاربر</option>
                         </select>
-                        <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select">
+                        <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select full-width">
                             <option value="">-- انتخاب وضعیت --</option>
                             <?php foreach($wc_statuses as $k=>$v) echo "<option value='$k' ".selected($data['sub_trigger']??'', $k, false).">$v</option>"; ?>
                         </select>
@@ -212,7 +223,7 @@ class Hub_Admin {
                                 <option value="custom" <?php selected($data['sms_target']??'', 'custom'); ?>>مدیر (شماره ثابت)</option>
                             </select>
                             <input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="full-width sms-custom-input" placeholder="0912..." style="margin-bottom:5px;">
-                            <textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" placeholder="متن پیامک..."><?php echo esc_textarea($data['message_sms']??''); ?></textarea>
+                            <textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" placeholder="متن پیامک (با شورت‌کد)"><?php echo esc_textarea($data['message_sms']??''); ?></textarea>
                         </div>
                     </div>
                     <div class="action-col <?php echo $active_tg ? 'active' : ''; ?>">
@@ -227,7 +238,7 @@ class Hub_Admin {
                         </div>
                     </div>
                 </div>
-                <div class="shortcode-hint"><small>متغیرها: <code>{order_id}</code>, <code>{status}</code>, <code>{full_name}</code>, <code>{total}</code>, <code>{_scrape_raw_result_}</code></small></div>
+                <div class="shortcode-hint">💡 متغیرها: <code>{order_id}</code>, <code>{status}</code>, <code>{full_name}</code>, <code>{total}</code>, <code>{_scrape_raw_result_}</code></div>
             </div>
         </div>
         <?php
@@ -236,7 +247,9 @@ class Hub_Admin {
 	private static function render_logs_tab() { 
         global $wpdb; $table = $wpdb->prefix . 'hub_logs'; $logs = $wpdb->get_results( "SELECT * FROM $table ORDER BY id DESC LIMIT 50" );
         ?>
-        <div class="hub-card"><h3>📜 لاگ‌های سیستم</h3><table class="wp-list-table widefat fixed striped"><thead><tr><th>زمان</th><th>نوع</th><th>منبع</th><th>پیام</th></tr></thead><tbody><?php if($logs): foreach($logs as $log): ?><tr><td dir="ltr"><?php echo $log->created_at; ?></td><td><?php echo $log->log_type; ?></td><td><?php echo $log->source; ?></td><td><?php echo esc_html($log->message); ?></td></tr><?php endforeach; endif; ?></tbody></table></div>
+        <div class="hub-card"><h3>📜 لاگ‌های سیستم</h3><table class="wp-list-table widefat fixed striped"><thead><tr><th>زمان</th><th>نوع</th><th>منبع</th><th>پیام</th></tr></thead><tbody><?php if($logs): foreach($logs as $log): ?><tr><td dir="ltr"><?php echo $log->created_at; ?></td><td><?php 
+        $s = $log->log_type; $cls = ($s=='success')?'success':(($s=='error')?'error':'info');
+        echo "<span class='badge $cls'>$s</span>"; ?></td><td><?php echo $log->source; ?></td><td><?php echo esc_html($log->message); ?></td></tr><?php endforeach; endif; ?></tbody></table></div>
         <?php
     }
 }
