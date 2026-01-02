@@ -28,37 +28,45 @@ class Hub_Sender {
                     else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'HTTP Error'; }
                 }
 
-                // 2. SMS (Persian WooCommerce)
+                // 2. SMS (DIRECT Melipayamak) 📩
                 elseif ( $item->event_type === 'sms.send' ) {
-                    require_once HUB_PLUGIN_DIR . 'integrations/class-persian-wc.php';
-                    if ( Hub_Persian_WC::send_sms( $payload['mobile'], $payload['message'] ) ) {
-                        $success = true; $log_msg = "SMS sent to {$payload['mobile']}";
+                    if ( class_exists('SoapClient') ) {
+                        $client = new SoapClient("http://api.payamak-panel.com/post/send.asmx?wsdl");
+                        
+                        $params = array(
+                            'username' => $payload['user'],
+                            'password' => $payload['pass'],
+                            'from' => $payload['from'],
+                            'to' => array($payload['mobile']),
+                            'text' => $payload['message'],
+                            'isflash' => false,
+                            'udh' => "",
+                            'recId' => array(0),
+                            'status' => 0
+                        );
+                        
+                        $result = $client->SendSms($params);
+                        
+                        // ملی پیامک اگر موفق باشد یک عدد (RecId) برمی‌گرداند
+                        // اگر خطا باشد عدد کوچک یا ارور برمی‌گرداند. معمولاً اگر طولش > 1 باشد یعنی موفق
+                        if ( isset($result->SendSmsResult) && strlen($result->SendSmsResult) > 1 ) {
+                            $success = true;
+                            $log_msg = "SMS Sent to {$payload['mobile']} (ID: {$result->SendSmsResult})";
+                        } else {
+                            $log_msg = "Melipayamak Error: " . json_encode($result);
+                        }
                     } else {
-                        $log_msg = 'SMS Provider returned false';
+                        $log_msg = "SOAP Client not enabled on server";
                     }
                 }
 
-                // 3. Telegram (With Proxy)
+                // 3. Telegram
                 elseif ( $item->event_type === 'telegram.send' ) {
                     $args = [ 'body' => [ 'chat_id' => $payload['chat_id'], 'text' => $payload['message'], 'parse_mode' => 'HTML' ], 'timeout'=>15 ];
-                    
-                    // تنظیم پروکسی برای تلگرام
-                    $proxy = get_option('hub_telegram_proxy');
-                    if( !empty($proxy) ) {
-                        // متاسفانه WP_Remote_Post به سادگی از پراکسی پشتیبانی نمی‌کند
-                        // برای سرورهای ایران، بهترین کار استفاده از curl دستی است اگر پراکسی ساکس باشد
-                        // اما برای HTTP Proxy استاندارد:
-                        // $args['proxy'] = $proxy; // در نسخه‌های جدید وردپرس ممکن است کار کند
-                    }
-
                     $api_url = "https://api.telegram.org/bot{$payload['token']}/sendMessage";
                     $res = wp_remote_post( $api_url, $args );
-                    
-                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) {
-                        $success = true; $log_msg = "Telegram sent to {$payload['chat_id']}";
-                    } else {
-                        $log_msg = is_wp_error($res) ? $res->get_error_message() : 'Telegram API Error';
-                    }
+                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = "Telegram sent to {$payload['chat_id']}"; }
+                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'Telegram API Error'; }
                 }
 
             } catch (Exception $e) { $log_msg = $e->getMessage(); }

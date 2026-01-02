@@ -1,67 +1,62 @@
 jQuery(document).ready(function($) {
     
-    // --- مدیریت Repeater وب‌هوک‌ها ---
-    $('#add-webhook').on('click', function() {
-        var tpl = $('#webhook-template').html().replace(/INDEX/g, $('.webhook-row').length);
-        $('#webhooks-container').append(tpl);
-    });
-
-    // --- مدیریت Repeater سناریوها ---
-    $('#add-rule').on('click', function() {
-        var tpl = $('#rule-template').html().replace(/INDEX/g, $('.rule-row').length);
-        var newRow = $(tpl);
-        $('#rules-container').append(newRow);
-        $('.no-data-msg').remove();
+    // --- مدیریت نمایش فیلدهای اتصال (Webhook/Telegram/SMS) ---
+    $(document).on('change', '.input-type', function() {
+        var type = $(this).val();
+        var row = $(this).closest('.repeater-row');
         
-        // باز کردن خودکار سناریوی جدید
-        newRow.find('.trigger-select').trigger('change');
-        // اسکرول نرم به سناریوی جدید
-        $('html, body').animate({ scrollTop: newRow.offset().top - 50 }, 500);
-    });
-
-    // --- حذف سطر ---
-    $(document).on('click', '.remove-row', function(e) {
-        e.stopPropagation(); // جلوگیری از باز شدن آکاردئون موقع حذف
-        if(confirm('آیا مطمئن هستید؟')) {
-            $(this).closest('.repeater-row').slideUp(300, function(){ $(this).remove(); });
+        row.find('.field-group').hide(); // مخفی کردن همه
+        if(type === 'melipayamak') {
+            row.find('.field-melipayamak').css('display', 'flex');
+        } else {
+            row.find('.field-webhook').show(); // برای n8n و تلگرام
         }
     });
 
-    // --- آکاردئون (باز و بسته کردن) ---
-    $(document).on('click', '.rule-header', function() {
-        var row = $(this).closest('.rule-row');
-        row.toggleClass('open');
+    // --- Repeater Logic ---
+    $('#add-webhook').on('click', function() {
+        var tpl = $('#webhook-template').html().replace(/INDEX/g, $('.webhook-row').length);
+        var newRow = $(tpl);
+        $('#webhooks-container').append(newRow);
+        newRow.find('.input-type').trigger('change'); // تریگر اولیه
     });
 
-    // --- جلوگیری از بسته شدن موقع کلیک روی ورودی‌ها ---
-    $(document).on('click', '.rule-body', function(e) {
+    $('#add-rule').on('click', function() {
+        var tpl = $('#rule-template').html().replace(/INDEX/g, $('.rule-row').length);
+        $('#rules-container').append(tpl);
+        $('.no-data-msg').remove();
+        initLogic();
+    });
+
+    $(document).on('click', '.remove-row', function(e) {
         e.stopPropagation();
+        if(confirm('حذف شود؟')) $(this).closest('.repeater-row').remove();
     });
+    
+    $(document).on('click', '.rule-header', function() {
+        $(this).closest('.rule-row').toggleClass('open');
+    });
+    $(document).on('click', '.rule-body', function(e) { e.stopPropagation(); });
 
-    // --- منطق داینامیک سناریوها ---
     function initLogic() {
-        // تریگر
-        $(document).on('change', '.trigger-select', function() {
+        $('.trigger-select').off('change').on('change', function() {
             var val = $(this).val();
             var row = $(this).closest('.rule-row');
             val === 'order_status' ? row.find('.sub-trigger-select').show() : row.find('.sub-trigger-select').hide();
-        });
+        }).trigger('change');
 
-        // فعال‌سازی اکشن‌ها (تغییر استایل کارت)
-        $(document).on('change', '.toggle-action', function() {
+        $('.toggle-action').off('change').on('change', function() {
             var col = $(this).closest('.action-col');
             $(this).is(':checked') ? col.addClass('active') : col.removeClass('active');
-        });
+        }).trigger('change');
 
-        // تارگت SMS
-        $(document).on('change', '.sms-target-select', function() {
+        $('.sms-target-select').off('change').on('change', function() {
             var input = $(this).siblings('.sms-custom-input');
-            $(this).val() === 'custom' ? input.slideDown() : input.slideUp();
-        });
+            $(this).val() === 'custom' ? input.show() : input.hide();
+        }).trigger('change');
     }
 
-    // اجرای اولیه برای تنظیم وضعیت‌ها
     initLogic();
-    // تریگر کردن برای ست شدن اولیه نمایش/مخفی
-    $('.trigger-select, .toggle-action, .sms-target-select').trigger('change');
+    // تریگر اولیه برای اتصالات موجود
+    $('.input-type').trigger('change');
 });
