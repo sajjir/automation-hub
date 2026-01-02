@@ -25,48 +25,79 @@ class Hub_Sender {
                     unset($payload['_webhook_url']);
                     $res = wp_remote_post( $url, [ 'body' => json_encode($payload), 'headers' => ['Content-Type'=>'application/json'], 'timeout'=>20 ] );
                     if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = 'Sent to n8n'; }
-                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'HTTP Error'; }
+                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'HTTP Error ' . wp_remote_retrieve_response_code($res); }
                 }
 
-                // 2. SMS (DIRECT Melipayamak) 📩
+                // 2. SMS (Melipayamak Smart Sender) 📩
                 elseif ( $item->event_type === 'sms.send' ) {
-                    if ( class_exists('SoapClient') ) {
-                        $client = new SoapClient("http://api.payamak-panel.com/post/send.asmx?wsdl");
+                    
+                    $username = $payload['user'];
+                    $password = $payload['pass'];
+                    $to       = $payload['mobile'];
+                    $text     = $payload['message'];
+                    
+                    // تشخیص هوشمند: آیا پترن است؟ (مثلاً @12345@علی;سفارش)
+                    if ( strpos( trim($text), '@' ) === 0 ) {
+                        // --- روش ارسال پترن (Shared Line) ---
+                        // فرمت باید این باشد: @کد_پترن@مقداری1;مقدار2;مقدار3
+                        $parts = explode('@', $text);
+                        // $parts[0] خالی است، $parts[1] کد پترن، $parts[2] متغیرها
                         
-                        $params = array(
-                            'username' => $payload['user'],
-                            'password' => $payload['pass'],
-                            'from' => $payload['from'],
-                            'to' => array($payload['mobile']),
-                            'text' => $payload['message'],
-                            'isflash' => false,
-                            'udh' => "",
-                            'recId' => array(0),
-                            'status' => 0
-                        );
-                        
-                        $result = $client->SendSms($params);
-                        
-                        // ملی پیامک اگر موفق باشد یک عدد (RecId) برمی‌گرداند
-                        // اگر خطا باشد عدد کوچک یا ارور برمی‌گرداند. معمولاً اگر طولش > 1 باشد یعنی موفق
-                        if ( isset($result->SendSmsResult) && strlen($result->SendSmsResult) > 1 ) {
-                            $success = true;
-                            $log_msg = "SMS Sent to {$payload['mobile']} (ID: {$result->SendSmsResult})";
+                        if ( isset($parts[1]) && is_numeric($parts[1]) ) {
+                            $bodyId = $parts[1];
+                            $args_str = isset($parts[2]) ? $parts[2] : '';
+                            $args = explode(';', $args_str); // جدا کردن متغیرها با ;
+                            
+                            $url = 'https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber';
+                            $body = [
+                                'username' => $username,
+                                'password' => $password,
+                                'text'     => implode(';', $args), // ملی پیامک متن‌ها را با ; می‌گیرد
+                                'to'       => $to,
+                                'bodyId'   => (int)$bodyId
+                            ];
+                            
+                            $log_mode = "Pattern ($bodyId)";
                         } else {
-                            $log_msg = "Melipayamak Error: " . json_encode($result);
+                            // فرمت غلط بود، تلاش برای ارسال عادی
+                            $url = 'https://rest.payamak-panel.com/api/SendSMS/SendSMS';
+                            $body = ['username'=>$username, 'password'=>$password, 'to'=>$to, 'from'=>$payload['from'], 'text'=>$text, 'isFlash'=>false];
+                            $log_mode = "Normal (Fallback)";
                         }
                     } else {
-                        $log_msg = "SOAP Client not enabled on server";
+                        // --- روش ارسال معمولی (تبلیغاتی) ---
+                        $url = 'https://rest.payamak-panel.com/api/SendSMS/SendSMS';
+                        $body = ['username'=>$username, 'password'=>$password, 'to'=>$to, 'from'=>$payload['from'], 'text'=>$text, 'isFlash'=>false];
+                        $log_mode = "Normal";
+                    }
+
+                    // ارسال درخواست
+                    $res = wp_remote_post( $url, [ 
+                        'body' => json_encode($body), 
+                        'headers' => ['Content-Type' => 'application/json'], 
+                        'timeout' => 15 
+                    ]);
+
+                    if ( is_wp_error($res) ) {
+                        $log_msg = "SMS Connect Error: " . $res->get_error_message();
+                    } else {
+                        $json = json_decode(wp_remote_retrieve_body($res), true);
+                        // بررسی موفقیت (Value طولانی یعنی ID پیام)
+                        if ( isset($json['Value']) && strlen($json['Value']) > 5 ) {
+                            $success = true;
+                            $log_msg = "SMS Sent ($log_mode)! ID: " . $json['Value'];
+                        } else {
+                            $log_msg = "Melipayamak Error ($log_mode): " . wp_remote_retrieve_body($res);
+                        }
                     }
                 }
 
                 // 3. Telegram
                 elseif ( $item->event_type === 'telegram.send' ) {
-                    $args = [ 'body' => [ 'chat_id' => $payload['chat_id'], 'text' => $payload['message'], 'parse_mode' => 'HTML' ], 'timeout'=>15 ];
                     $api_url = "https://api.telegram.org/bot{$payload['token']}/sendMessage";
-                    $res = wp_remote_post( $api_url, $args );
-                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = "Telegram sent to {$payload['chat_id']}"; }
-                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'Telegram API Error'; }
+                    $res = wp_remote_post( $api_url, [ 'body' => [ 'chat_id' => $payload['chat_id'], 'text' => $payload['message'], 'parse_mode' => 'HTML' ], 'timeout'=>15 ] );
+                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = "Telegram sent"; }
+                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'Telegram Error'; }
                 }
 
             } catch (Exception $e) { $log_msg = $e->getMessage(); }
