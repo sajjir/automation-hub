@@ -5,61 +5,75 @@
  * Version: 1.0.0
  * Author: sajj.ir | هوش مرکزی
  * Text Domain: automation-hub
+ * Domain Path: /languages
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-// تعریف ثابت‌های مسیر
+// تعریف ثابت‌های مسیر و نسخه
 define( 'HUB_VERSION', '1.0.0' );
 define( 'HUB_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HUB_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
 define( 'HUB_DB_VERSION', '1.0' );
 
 /**
- * 1. فعال‌سازی افزونه (ساخت جداول)
+ * 1. فعال‌سازی و غیرفعال‌سازی
  */
-function activate_automation_hub() {
+function hub_activate_plugin() {
 	require_once HUB_PLUGIN_DIR . 'core/class-hub-activator.php';
 	Hub_Activator::activate();
 }
-register_activation_hook( __FILE__, 'activate_automation_hub' );
+register_activation_hook( __FILE__, 'hub_activate_plugin' );
 
-/**
- * 2. غیرفعال‌سازی
- */
-function deactivate_automation_hub() {
-	// پاکسازی صف اکشن اسکجولر
+function hub_deactivate_plugin() {
 	if ( function_exists( 'as_unschedule_action' ) ) {
 		as_unschedule_action( 'hub_process_queue_event' );
 	}
 }
-register_deactivation_hook( __FILE__, 'deactivate_automation_hub' );
+register_deactivation_hook( __FILE__, 'hub_deactivate_plugin' );
 
 /**
- * 3. بارگذاری هسته اصلی و ماژول‌ها
+ * 2. بارگذاری کلاس‌ها (فقط اینکلود کردن، بدون اجرا)
  */
-function run_automation_hub() {
-	// الف) لود کردن ماژول‌های هسته
+function hub_load_classes() {
+	// هسته (Core)
 	require_once HUB_PLUGIN_DIR . 'modules/logger/class-hub-logger.php';
 	require_once HUB_PLUGIN_DIR . 'core/class-hub-security.php';
 	require_once HUB_PLUGIN_DIR . 'core/class-hub-queue.php';
 	require_once HUB_PLUGIN_DIR . 'core/class-hub-bridge.php';
 	require_once HUB_PLUGIN_DIR . 'core/class-hub-sender.php';
     
-    // ب) لود کردن رابط کاربری و اینتگریشن‌ها
-    require_once HUB_PLUGIN_DIR . 'integrations/class-persian-wc.php'; // کلاس پیامک
-    require_once HUB_PLUGIN_DIR . 'admin/class-hub-admin.php'; // کلاس ادمین
+    // رابط کاربری و ویجت‌ها
+    require_once HUB_PLUGIN_DIR . 'integrations/class-persian-wc.php';
+    require_once HUB_PLUGIN_DIR . 'admin/class-hub-admin.php';
+    
+    if ( file_exists( HUB_PLUGIN_DIR . 'modules/dashboard-widget/class-hub-widget.php' ) ) {
+        require_once HUB_PLUGIN_DIR . 'modules/dashboard-widget/class-hub-widget.php';
+    }
+}
+add_action( 'plugins_loaded', 'hub_load_classes' );
 
-	// ج) راه‌اندازی اولیه
-	Hub_Bridge::init();      // گوش دادن به رویدادهای ووکامرس
-	Hub_Admin::init();       // ساخت منو و داشبورد مدیریت
+/**
+ * 3. راه‌اندازی منطق (روی هوک init برای اطمینان از لود شدن وردپرس)
+ */
+function hub_init_plugin() {
+    // الف) لود کردن زبان (رفع خطای _load_textdomain_just_in_time)
+    load_plugin_textdomain( 'automation-hub', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
+
+	// ب) شروع به کار ماژول‌ها
+	Hub_Bridge::init(); // گوش دادن به رویدادها
+	Hub_Admin::init();  // ساخت منوی ادمین
 	
-    // د) راه‌اندازی صف (اصلاح شده: انتقال به هوک init برای رفع خطا)
-	if ( class_exists( 'ActionScheduler' ) ) {
-        // این خط تغییر کرد: به جای اجرای مستقیم، آن را به init هوک می‌کنیم
-		add_action( 'init', array( 'Hub_Sender', 'init' ) );
+    // ج) ویجت داشبورد
+    if ( class_exists( 'Hub_Widget' ) ) {
+        new Hub_Widget();
+    }
+
+    // د) راه‌اندازی صف (با اولویت پایین‌تر برای اطمینان از اکشن اسکجولر)
+	if ( class_exists( 'Hub_Sender' ) && class_exists( 'ActionScheduler' ) ) {
+		Hub_Sender::init();
 	}
 }
-add_action( 'plugins_loaded', 'run_automation_hub' );
+add_action( 'init', 'hub_init_plugin', 20 ); // اولویت ۲۰ حیاتی است

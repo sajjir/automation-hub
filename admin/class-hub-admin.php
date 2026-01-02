@@ -1,21 +1,12 @@
 <?php
 
-/**
- * The admin-specific functionality of the plugin.
- */
 class Hub_Admin {
 
-	/**
-	 * Initialize Admin.
-	 */
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'add_admin_menu' ) );
-		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_styles' ) );
+		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 	}
 
-	/**
-	 * Add menu item.
-	 */
 	public static function add_admin_menu() {
 		add_menu_page(
 			'هاب اتوماسیون',
@@ -23,183 +14,297 @@ class Hub_Admin {
 			'manage_options',
 			'automation-hub',
 			array( __CLASS__, 'render_admin_page' ),
-			'dashicons-rest-api',
+			'dashicons-superhero-alt',
 			56
 		);
 	}
 
-	/**
-	 * Load CSS/JS.
-	 */
-	public static function enqueue_styles( $hook ) {
+	public static function enqueue_assets( $hook ) {
 		if ( 'toplevel_page_automation-hub' !== $hook ) {
 			return;
 		}
-		// استایل‌های ساده برای تب‌ها
-		wp_register_style( 'hub_admin_css', false );
-		wp_enqueue_style( 'hub_admin_css' );
-		wp_add_inline_style( 'hub_admin_css', '
-			.hub-wrap { background: #fff; padding: 20px; border: 1px solid #ccd0d4; box-shadow: 0 1px 1px rgba(0,0,0,.04); margin-top: 20px; max-width: 1200px; }
-			.hub-tabs { border-bottom: 1px solid #ddd; margin-bottom: 20px; }
-			.hub-tab { display: inline-block; padding: 10px 20px; text-decoration: none; color: #555; border: 1px solid transparent; margin-bottom: -1px; }
-			.hub-tab.active { border: 1px solid #ddd; border-bottom-color: #fff; font-weight: bold; color: #000; }
-			.hub-card { background: #f9f9f9; padding: 15px; border: 1px solid #eee; margin-bottom: 15px; border-radius: 5px; }
-			.hub-status-ok { color: green; font-weight: bold; }
-			.hub-status-fail { color: red; font-weight: bold; }
-		' );
+		// استایل‌ها
+		wp_enqueue_style( 'hub-admin-style', HUB_PLUGIN_URL . 'admin/css/hub-admin.css', array(), HUB_VERSION );
+		
+		// جاوااسکریپت (برای Repeater و تغییرات داینامیک)
+		wp_enqueue_script( 'hub-admin-js', HUB_PLUGIN_URL . 'admin/js/hub-admin.js', array( 'jquery' ), HUB_VERSION, true );
+        
+        // ارسال داده‌ها به JS
+        wp_localize_script( 'hub-admin-js', 'hubData', array(
+            'statuses' => function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [],
+        ));
 	}
 
-	/**
-	 * Render the main admin page with tabs.
-	 */
 	public static function render_admin_page() {
-		$active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'dashboard';
-		?>
-		<div class="wrap">
-			<h1>🚀 هاب اتوماسیون هوشمند</h1>
+		$active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'connections';
+		
+        // ذخیره‌سازی داده‌ها
+        if ( isset( $_POST['hub_save_settings'] ) && check_admin_referer( 'hub_save_nonce' ) ) {
+            self::save_settings();
+            echo '<div class="notice notice-success is-dismissible"><p>تنظیمات با موفقیت ذخیره شد.</p></div>';
+        }
+
+        ?>
+		<div class="wrap hub-wrap">
+            <div class="hub-header">
+                <h1>🚀 هاب اتوماسیون <span class="hub-version">v<?php echo HUB_VERSION; ?></span></h1>
+            </div>
 			
-			<div class="hub-wrap">
-				<div class="hub-tabs">
-					<a href="?page=automation-hub&tab=dashboard" class="hub-tab <?php echo $active_tab === 'dashboard' ? 'active' : ''; ?>">داشبورد و اتصالات</a>
-					<a href="?page=automation-hub&tab=logs" class="hub-tab <?php echo $active_tab === 'logs' ? 'active' : ''; ?>">لاگ‌ها و گزارشات</a>
-					</div>
+			<nav class="nav-tab-wrapper hub-nav">
+				<a href="?page=automation-hub&tab=connections" class="nav-tab <?php echo $active_tab === 'connections' ? 'nav-tab-active' : ''; ?>">🔌 اتصالات (Webhooks)</a>
+				<a href="?page=automation-hub&tab=campaigns" class="nav-tab <?php echo $active_tab === 'campaigns' ? 'nav-tab-active' : ''; ?>">📢 کمپین‌ساز (Rules)</a>
+				<a href="?page=automation-hub&tab=logs" class="nav-tab <?php echo $active_tab === 'logs' ? 'nav-tab-active' : ''; ?>">📜 لاگ‌ها</a>
+			</nav>
 
-				<div class="hub-content">
-					<?php
-					if ( $active_tab === 'dashboard' ) {
-						self::render_dashboard_tab();
-					} elseif ( $active_tab === 'logs' ) {
-						self::render_logs_tab();
-					}
-					?>
-				</div>
-			</div>
+			<form method="post" class="hub-body">
+                <?php wp_nonce_field( 'hub_save_nonce' ); ?>
+                
+				<?php
+                switch ( $active_tab ) {
+                    case 'connections': self::render_connections_tab(); break;
+                    case 'campaigns': self::render_campaigns_tab(); break;
+                    case 'logs': self::render_logs_tab(); break;
+                    default: self::render_connections_tab();
+                }
+				?>
+                
+                <?php if($active_tab !== 'logs'): ?>
+                <div class="hub-footer-actions">
+                    <button type="submit" name="hub_save_settings" class="button button-primary button-hero">ذخیره تغییرات</button>
+                </div>
+                <?php endif; ?>
+			</form>
 		</div>
 		<?php
 	}
 
-	/**
-	 * Render Dashboard Tab (Connections).
-	 */
-	private static function render_dashboard_tab() {
-		// ذخیره‌سازی تنظیمات اگر فرم ارسال شده باشد
-		if ( isset( $_POST['hub_save_settings'] ) && check_admin_referer( 'hub_settings_nonce' ) ) {
-			if ( isset( $_POST['n8n_url'] ) ) {
-				update_option( 'hub_n8n_webhook_url', esc_url_raw( $_POST['n8n_url'] ) );
-				echo '<div class="notice notice-success"><p>تنظیمات ذخیره شد.</p></div>';
-			}
-			if ( isset( $_POST['gen_key'] ) ) {
-				Hub_Security::generate_api_key();
-				echo '<div class="notice notice-warning"><p>کلید امنیتی جدید تولید شد.</p></div>';
-			}
-		}
+    // --- ذخیره‌سازی ---
+    private static function save_settings() {
+        // 1. ذخیره وب‌هوک‌ها
+        if(isset($_POST['webhooks'])) {
+            $clean_hooks = [];
+            foreach($_POST['webhooks'] as $wh) {
+                if(!empty($wh['name']) && !empty($wh['url'])) {
+                    $clean_hooks[] = [
+                        'id' => sanitize_title($wh['name']),
+                        'name' => sanitize_text_field($wh['name']),
+                        'url' => esc_url_raw($wh['url']),
+                        'method' => sanitize_text_field($wh['method'])
+                    ];
+                }
+            }
+            update_option('hub_webhooks', $clean_hooks);
+        }
 
-		$n8n_url = get_option( 'hub_n8n_webhook_url', '' );
-		$api_key = Hub_Security::get_api_key();
-		
-		// بررسی وضعیت پیامک
-		require_once HUB_PLUGIN_DIR . 'integrations/class-persian-wc.php';
-		$sms_active = Hub_Persian_WC::is_active();
-		$sms_config = Hub_Persian_WC::get_sms_config();
+        // 2. ذخیره قوانین (Campaigns)
+        if(isset($_POST['rules'])) {
+            $clean_rules = [];
+            foreach($_POST['rules'] as $rule) {
+                // پاکسازی آرایه‌ها
+                $rule['message'] = wp_kses_post($rule['message']);
+                $clean_rules[] = $rule;
+            }
+            update_option('hub_rules', $clean_rules);
+        }
+        
+        // 3. API Key
+        if(isset($_POST['gen_key'])) Hub_Security::generate_api_key();
+    }
+
+    // --- TAB 1: CONNECTIONS (REPEATER) ---
+	private static function render_connections_tab() {
+		$webhooks = get_option('hub_webhooks', []);
+        $api_key = Hub_Security::get_api_key();
 		?>
-		
-		<div style="display: flex; gap: 20px;">
-			<div style="flex: 2;">
-				<form method="post">
-					<?php wp_nonce_field( 'hub_settings_nonce' ); ?>
-					
-					<div class="hub-card">
-						<h3>🔗 اتصال به n8n (قلب سیستم)</h3>
-						<p>آدرس وب‌هوک اصلی (Webhook) که در سناریوی n8n خود ساخته‌اید را اینجا وارد کنید.</p>
-						<input type="url" name="n8n_url" value="<?php echo esc_attr( $n8n_url ); ?>" class="regular-text" style="width: 100%;" placeholder="https://n8n.example.com/webhook/..." required>
-						<br><br>
-						<button type="submit" name="hub_save_settings" class="button button-primary">ذخیره تنظیمات</button>
-					</div>
-
-					<div class="hub-card">
-						<h3>🔒 امنیت API (برای دستورات دوطرفه)</h3>
-						<p>اگر می‌خواهید n8n به سایت شما فرمان دهد (مثلاً آپدیت محصول)، از این کلید در هدر <code>X-Hub-Api-Key</code> استفاده کنید.</p>
-						<input type="text" value="<?php echo esc_attr( $api_key ); ?>" class="regular-text" style="width: 100%; background: #eee;" readonly>
-						<br><br>
-						<button type="submit" name="gen_key" value="1" class="button" onclick="return confirm('آیا مطمئن هستید؟ کلید قبلی منقضی خواهد شد.');">تولید کلید جدید</button>
-					</div>
-				</form>
-			</div>
-
-			<div style="flex: 1;">
-				<div class="hub-card">
-					<h3>📡 وضعیت سیستم</h3>
-					<ul>
-						<li>
-							<strong>وضعیت n8n:</strong> 
-							<?php echo ! empty( $n8n_url ) ? '<span class="hub-status-ok">✅ متصل</span>' : '<span class="hub-status-fail">❌ تنظیم نشده</span>'; ?>
-						</li>
-						<li style="margin-top: 10px;">
-							<strong>وضعیت پیامک:</strong>
-							<?php if ( $sms_active ) : ?>
-								<span class="hub-status-ok">✅ شناسایی شد (ووکامرس فارسی)</span>
-								<?php if ( $sms_config ) : ?>
-									<br><small style="color: #666;">پنل: <?php echo esc_html( $sms_config['provider'] ); ?> | نام‌کاربری: <?php echo esc_html( $sms_config['username'] ); ?></small>
-								<?php endif; ?>
-							<?php else : ?>
-								<span class="hub-status-fail">⚠️ یافت نشد</span>
-								<p><small>لطفاً افزونه "ووکامرس فارسی" را نصب و تنظیم کنید.</small></p>
-							<?php endif; ?>
-						</li>
-					</ul>
-				</div>
-			</div>
-		</div>
+        <div class="hub-grid">
+            <div class="hub-col-2">
+                <div class="hub-card">
+                    <div class="hub-card-header">
+                        <h3>لیست وب‌هوک‌های n8n</h3>
+                        <button type="button" class="button" id="add-webhook">+ افزودن جدید</button>
+                    </div>
+                    <div class="hub-card-body" id="webhooks-container">
+                        <?php if(empty($webhooks)): ?>
+                            <?php self::render_webhook_row(0, [], true); ?>
+                        <?php else: ?>
+                            <?php foreach($webhooks as $index => $wh) self::render_webhook_row($index, $wh); ?>
+                        <?php endif; ?>
+                    </div>
+                    <p class="description">می‌توانید بی‌نهایت وب‌هوک تعریف کنید (مثلاً: حسابداری، انبار، مدیریت) و در کمپین‌ها استفاده کنید.</p>
+                </div>
+            </div>
+            
+            <div class="hub-col-1">
+                <div class="hub-card">
+                    <div class="hub-card-header"><h3>🔒 امنیت API</h3></div>
+                    <div class="hub-card-body">
+                        <p>کلید ارتباط دوطرفه (n8n به وردپرس):</p>
+                        <input type="text" value="<?php echo esc_attr( $api_key ); ?>" class="code-input full-width" readonly>
+                        <br><br>
+                        <button type="submit" name="gen_key" value="1" class="button">🔄 تولید مجدد</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <template id="webhook-template">
+            <?php self::render_webhook_row('INDEX', [], true); ?>
+        </template>
 		<?php
 	}
 
-	/**
-	 * Render Logs Tab.
-	 */
+    private static function render_webhook_row($index, $data = [], $is_template = false) {
+        $name = $data['name'] ?? '';
+        $url = $data['url'] ?? '';
+        $method = $data['method'] ?? 'POST';
+        ?>
+        <div class="repeater-row webhook-row">
+            <div class="row-actions"><span class="dashicons dashicons-trash remove-row" title="حذف"></span></div>
+            <div class="row-fields">
+                <input type="text" name="webhooks[<?php echo $index; ?>][name]" value="<?php echo esc_attr($name); ?>" placeholder="نام (مثلاً: انبار)" class="input-name">
+                <select name="webhooks[<?php echo $index; ?>][method]" class="input-method">
+                    <option value="POST" <?php selected($method, 'POST'); ?>>POST</option>
+                    <option value="GET" <?php selected($method, 'GET'); ?>>GET</option>
+                </select>
+                <input type="url" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($url); ?>" placeholder="https://n8n.../webhook/..." class="input-url">
+            </div>
+        </div>
+        <?php
+    }
+
+    // --- TAB 2: CAMPAIGNS (RULE BUILDER) ---
+    private static function render_campaigns_tab() {
+        $rules = get_option('hub_rules', []);
+        $webhooks = get_option('hub_webhooks', []);
+        $wc_statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
+        ?>
+        <div class="hub-card">
+            <div class="hub-card-header">
+                <h3>قوانین و سناریوها</h3>
+                <button type="button" class="button button-primary" id="add-rule">+ سناریوی جدید</button>
+            </div>
+            <div class="hub-card-body" id="rules-container">
+                <?php if(empty($rules)): ?>
+                    <p class="no-data-msg">هنوز هیچ سناریویی تعریف نکرده‌اید.</p>
+                <?php else: ?>
+                    <?php foreach($rules as $index => $rule) self::render_rule_row($index, $rule, $webhooks, $wc_statuses); ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <template id="rule-template">
+            <?php self::render_rule_row('INDEX', [], $webhooks, $wc_statuses, true); ?>
+        </template>
+        <?php
+    }
+
+    private static function render_rule_row($index, $data, $webhooks, $wc_statuses, $is_template = false) {
+        $trigger = $data['trigger'] ?? 'order_status';
+        $sub_trigger = $data['sub_trigger'] ?? ''; // مثلاً wc-processing
+        $webhook_id = $data['webhook_id'] ?? '';
+        $message = $data['message'] ?? '';
+        
+        // شرط پیچیده
+        $condition_active = isset($data['condition_active']) ? 'checked' : '';
+        $condition_key = $data['condition_key'] ?? ''; // مثلاً pa_guarantee
+        $condition_val = $data['condition_val'] ?? ''; // مثلاً طلایی
+        ?>
+        <div class="repeater-row rule-row">
+            <div class="rule-header">
+                <span class="rule-title">سناریوی #<?php echo $is_template ? 'جدید' : $index + 1; ?></span>
+                <span class="dashicons dashicons-trash remove-row"></span>
+            </div>
+            
+            <div class="rule-body">
+                <div class="rule-section">
+                    <label>۱. چه زمانی اجرا شود؟ (Trigger)</label>
+                    <div class="flex-row">
+                        <select name="rules[<?php echo $index; ?>][trigger]" class="trigger-select">
+                            <option value="order_status" <?php selected($trigger, 'order_status'); ?>>تغییر وضعیت سفارش</option>
+                            <option value="order_created" <?php selected($trigger, 'order_created'); ?>>ثبت سفارش جدید</option>
+                            <option value="user_register" <?php selected($trigger, 'user_register'); ?>>ثبت‌نام کاربر جدید</option>
+                            <option value="product_low_stock" <?php selected($trigger, 'product_low_stock'); ?>>کمبود موجودی محصول</option>
+                        </select>
+                        
+                        <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select" style="<?php echo $trigger !== 'order_status' ? 'display:none' : ''; ?>">
+                            <option value="">-- انتخاب وضعیت --</option>
+                            <?php foreach($wc_statuses as $k => $v): ?>
+                                <option value="<?php echo $k; ?>" <?php selected($sub_trigger, $k); ?>><?php echo $v; ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="rule-section logic-section">
+                    <label>
+                        <input type="checkbox" name="rules[<?php echo $index; ?>][condition_active]" class="condition-toggle" value="1" <?php echo $condition_active; ?>>
+                        ۲. شرط خاصی بررسی شود؟ (مثلاً گارانتی خاص)
+                    </label>
+                    <div class="condition-box" style="<?php echo empty($condition_active) ? 'display:none' : ''; ?>">
+                        <p class="description">اگر <strong>حداقل یکی</strong> از اقلام سفارش شرط زیر را داشت:</p>
+                        <div class="flex-row">
+                            <input type="text" name="rules[<?php echo $index; ?>][condition_key]" value="<?php echo esc_attr($condition_key); ?>" placeholder="نام ویژگی (مثلاً: pa_guarantee)">
+                            <span>شامل باشد:</span>
+                            <input type="text" name="rules[<?php echo $index; ?>][condition_val]" value="<?php echo esc_attr($condition_val); ?>" placeholder="مقدار (مثلاً: طلایی)">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="rule-section">
+                    <label>۳. چه کاری انجام شود؟ (Action)</label>
+                    <div class="flex-row">
+                        <span>ارسال به:</span>
+                        <select name="rules[<?php echo $index; ?>][webhook_id]">
+                            <option value="">-- انتخاب وب‌هوک --</option>
+                            <?php foreach($webhooks as $wh): ?>
+                                <option value="<?php echo $wh['id']; ?>" <?php selected($webhook_id, $wh['id']); ?>><?php echo esc_html($wh['name']); ?></option>
+                            <?php endforeach; ?>
+                        </select>
+                    </div>
+                    
+                    <div class="msg-box">
+                        <textarea name="rules[<?php echo $index; ?>][message]" rows="3" placeholder="متن پیام خود را اینجا بنویسید..."><?php echo esc_textarea($message); ?></textarea>
+                        
+                        <div class="shortcode-guides">
+                            <div class="guide guide-order" style="display:none">
+                                <small>متغیرها: <code>{order_id}</code> <code>{total}</code> <code>{full_name}</code> <code>{items_summary}</code> <code>{_scrape_raw_result_}</code></small>
+                            </div>
+                            <div class="guide guide-user" style="display:none">
+                                <small>متغیرها: <code>{user_id}</code> <code>{user_email}</code> <code>{user_name}</code></small>
+                            </div>
+                            <div class="guide guide-product" style="display:none">
+                                <small>متغیرها: <code>{product_name}</code> <code>{stock_qty}</code> <code>{product_sku}</code></small>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <?php
+    }
+
+    // --- TAB 3: LOGS ---
 	private static function render_logs_tab() {
 		global $wpdb;
 		$table = $wpdb->prefix . 'hub_logs';
-		// گرفتن ۵۰ لاگ آخر
 		$logs = $wpdb->get_results( "SELECT * FROM $table ORDER BY id DESC LIMIT 50" );
 		?>
-		<h3>📜 گزارش فعالیت‌های اخیر</h3>
-		<table class="wp-list-table widefat fixed striped">
-			<thead>
-				<tr>
-					<th width="15%">زمان</th>
-					<th width="10%">نوع</th>
-					<th width="10%">منبع</th>
-					<th>پیام</th>
-				</tr>
-			</thead>
-			<tbody>
-				<?php if ( $logs ) : foreach ( $logs as $log ) : ?>
-					<tr>
-						<td><?php echo $log->created_at; ?></td>
-						<td>
-							<?php 
-							$color = 'black';
-							if($log->log_type=='error') $color='red';
-							if($log->log_type=='success') $color='green';
-							echo "<span style='color:$color'>" . esc_html( $log->log_type ) . "</span>"; 
-							?>
-						</td>
-						<td><?php echo esc_html( $log->source ); ?></td>
-						<td>
-							<?php echo esc_html( $log->message ); ?>
-							<?php if ( $log->context ) : ?>
-								<details>
-									<summary>جزئیات فنی</summary>
-									<pre style="font-size: 10px;"><?php echo esc_html( $log->context ); ?></pre>
-								</details>
-							<?php endif; ?>
-						</td>
-					</tr>
-				<?php endforeach; else : ?>
-					<tr><td colspan="4">هنوز هیچ لاگی ثبت نشده است.</td></tr>
-				<?php endif; ?>
-			</tbody>
-		</table>
+		<div class="hub-card">
+            <h3>📜 ۵۰ فعالیت آخر</h3>
+            <table class="wp-list-table widefat fixed striped">
+                <thead><tr><th>زمان</th><th>نوع</th><th>منبع</th><th>پیام</th></tr></thead>
+                <tbody>
+                    <?php if ( $logs ) : foreach ( $logs as $log ) : ?>
+                        <tr>
+                            <td dir="ltr"><?php echo $log->created_at; ?></td>
+                            <td><?php echo $log->log_type; ?></td>
+                            <td><?php echo $log->source; ?></td>
+                            <td><?php echo esc_html($log->message); ?></td>
+                        </tr>
+                    <?php endforeach; endif; ?>
+                </tbody>
+            </table>
+        </div>
 		<?php
 	}
 }
