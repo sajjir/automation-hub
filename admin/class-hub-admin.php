@@ -51,7 +51,6 @@ class Hub_Admin {
 	}
 
     private static function save_settings() {
-        // ذخیره وب‌هوک‌ها
         if(isset($_POST['webhooks'])) {
             $clean = [];
             foreach($_POST['webhooks'] as $wh) {
@@ -66,7 +65,6 @@ class Hub_Admin {
             }
             update_option('hub_webhooks', $clean);
         }
-        // ذخیره قوانین
         if(isset($_POST['rules'])) {
             $clean_rules = [];
             foreach($_POST['rules'] as $rule) {
@@ -77,7 +75,6 @@ class Hub_Admin {
             }
             update_option('hub_rules', $clean_rules);
         }
-        // تنظیمات عمومی
         if(isset($_POST['telegram_proxy'])) update_option('hub_telegram_proxy', sanitize_text_field($_POST['telegram_proxy']));
         if(isset($_POST['gen_key'])) Hub_Security::generate_api_key();
     }
@@ -89,6 +86,10 @@ class Hub_Admin {
         require_once HUB_PLUGIN_DIR . 'integrations/class-persian-wc.php';
 		$sms_active = Hub_Persian_WC::is_active();
 		$sms_config = Hub_Persian_WC::get_sms_config();
+        
+        // جلوگیری از ارور PHP Warning
+        $provider_name = is_array($sms_config) && isset($sms_config['provider']) ? $sms_config['provider'] : 'نامشخص';
+        $sender_num = is_array($sms_config) && isset($sms_config['number']) ? $sms_config['number'] : '---';
 		?>
         <div class="hub-grid">
             <div class="hub-col-2">
@@ -107,18 +108,17 @@ class Hub_Admin {
                     <div class="hub-card-header"><h3>⚙️ تنظیمات تلگرام & پیامک</h3></div>
                     <div class="hub-card-body">
                         <label><strong>پروکسی تلگرام (اختیاری):</strong></label>
-                        <input type="text" name="telegram_proxy" value="<?php echo esc_attr($proxy); ?>" class="regular-text full-width" placeholder="ip:port (مثلاً 127.0.0.1:1080)">
-                        <p class="description">برای عبور از فیلتر در سرورهای ایران.</p>
+                        <input type="text" name="telegram_proxy" value="<?php echo esc_attr($proxy); ?>" class="regular-text full-width" placeholder="ip:port">
                         <hr>
                         <p><strong>وضعیت پیامک (Persian WC):</strong></p>
                         <?php if ( $sms_active ) : ?>
-                            <span class="badge success">✅ متصل به: <?php echo esc_html($sms_config['provider']); ?></span>
+                            <span class="badge success">✅ متصل به: <?php echo esc_html($provider_name); ?></span>
+                            <br><small>شماره فرستنده: <?php echo esc_html($sender_num); ?></small>
                         <?php else : ?>
-                            <span class="badge error">❌ ووکامرس فارسی یافت نشد</span>
+                            <span class="badge error">❌ افزونه پیامک ووکامرس فارسی یافت نشد</span>
                         <?php endif; ?>
                     </div>
                 </div>
-                
                 <div class="hub-card">
                      <div class="hub-card-header"><h3>🔒 امنیت API</h3></div>
                      <div class="hub-card-body">
@@ -143,7 +143,7 @@ class Hub_Admin {
                     <option value="webhook" <?php selected($type, 'webhook'); ?>>n8n Webhook</option>
                     <option value="telegram" <?php selected($type, 'telegram'); ?>>Telegram Bot</option>
                 </select>
-                <input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="URL یا Bot Token" class="input-url">
+                <input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="URL یا Token" class="input-url">
             </div>
         </div>
         <?php
@@ -211,8 +211,8 @@ class Hub_Admin {
                                 <option value="customer" <?php selected($data['sms_target']??'', 'customer'); ?>>مشتری (خودکار)</option>
                                 <option value="custom" <?php selected($data['sms_target']??'', 'custom'); ?>>مدیر (شماره ثابت)</option>
                             </select>
-                            <input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="full-width sms-custom-input" placeholder="مثلاً: 0912..." style="margin-bottom:5px;">
-                            <textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" placeholder="متن پیامک (با شورت‌کد)"><?php echo esc_textarea($data['message_sms']??''); ?></textarea>
+                            <input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="full-width sms-custom-input" placeholder="0912..." style="margin-bottom:5px;">
+                            <textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" placeholder="متن پیامک..."><?php echo esc_textarea($data['message_sms']??''); ?></textarea>
                         </div>
                     </div>
                     <div class="action-col <?php echo $active_tg ? 'active' : ''; ?>">
