@@ -1,63 +1,49 @@
 jQuery(document).ready(function($) {
     
-    // --- Repeater: اضافه کردن وب‌هوک ---
+    // افزودن وب‌هوک
     $('#add-webhook').on('click', function() {
-        var template = $('#webhook-template').html();
-        var index = $('.webhook-row').length;
-        template = template.replace(/INDEX/g, index);
-        $('#webhooks-container').append(template);
+        var tpl = $('#webhook-template').html().replace(/INDEX/g, $('.webhook-row').length);
+        $('#webhooks-container').append(tpl);
     });
 
-    // --- Repeater: اضافه کردن سناریو ---
+    // افزودن سناریو
     $('#add-rule').on('click', function() {
-        var template = $('#rule-template').html();
-        var index = $('.rule-row').length;
-        template = template.replace(/INDEX/g, index);
-        $('#rules-container').append(template);
+        var tpl = $('#rule-template').html().replace(/INDEX/g, $('.rule-row').length);
+        $('#rules-container').append(tpl);
         $('.no-data-msg').remove();
-        
-        // تریگر کردن برای نمایش حالت پیش‌فرض
-        $('#rules-container .rule-row:last .trigger-select').trigger('change');
+        initLogic();
     });
 
-    // --- حذف سطر ---
+    // حذف سطر
     $(document).on('click', '.remove-row', function() {
-        if(confirm('آیا مطمئن هستید؟')) {
-            $(this).closest('.repeater-row').remove();
-        }
+        if(confirm('آیا مطمئن هستید؟')) $(this).closest('.repeater-row').remove();
     });
 
-    // --- منطق داینامیک سناریوها (نمایش شرط‌ها بر اساس تریگر) ---
-    $(document).on('change', '.trigger-select', function() {
-        var val = $(this).val();
-        var row = $(this).closest('.rule-row');
-        
-        // 1. نمایش/مخفی کردن ساب-تریگر (فقط برای وضعیت سفارش)
-        if(val === 'order_status') {
-            row.find('.sub-trigger-select').show();
-        } else {
-            row.find('.sub-trigger-select').hide();
-        }
+    // منطق نمایش فیلدها
+    function initLogic() {
+        // تریگر
+        $('.trigger-select').off('change').on('change', function() {
+            var val = $(this).val();
+            var row = $(this).closest('.rule-row');
+            val === 'order_status' ? row.find('.sub-trigger-select').show() : row.find('.sub-trigger-select').hide();
+        }).trigger('change');
 
-        // 2. تغییر راهنمای شورت‌کدها
-        row.find('.guide').hide();
-        if(val.startsWith('order')) {
-            row.find('.guide-order').show();
-        } else if(val.startsWith('user')) {
-            row.find('.guide-user').show();
-        }
-    });
+        // فعال‌سازی اکشن‌ها
+        $('.toggle-action').off('change').on('change', function() {
+            var col = $(this).closest('.action-col');
+            $(this).is(':checked') ? col.addClass('active') : col.removeClass('active');
+        }).trigger('change');
 
-    // --- تاگل کردن شرط پیشرفته ---
-    $(document).on('change', '.condition-toggle', function() {
-        var box = $(this).closest('.logic-section').find('.condition-box');
-        if($(this).is(':checked')) {
-            box.slideDown();
-        } else {
-            box.slideUp();
-        }
-    });
+        // تارگت SMS
+        $('.sms-target-select').off('change').on('change', function() {
+            var input = $(this).siblings('.sms-custom-input');
+            if($(this).val() === 'custom') {
+                input.show();
+            } else {
+                input.hide();
+            }
+        }).trigger('change');
+    }
 
-    // اجرای اولیه برای تنظیم راهنماها در هنگام لود صفحه
-    $('.trigger-select').trigger('change');
+    initLogic();
 });

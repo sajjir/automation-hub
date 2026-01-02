@@ -1,107 +1,70 @@
 <?php
 
-/**
- * Processes the queue and sends data to n8n.
- */
 class Hub_Sender {
 
-	/**
-	 * Initialize the worker.
-	 */
 	public static function init() {
-        // اطمینان از وجود اکشن اسکجولر
-        if ( ! function_exists( 'as_next_scheduled_action' ) ) {
-            return;
-        }
-
+        if ( ! function_exists( 'as_next_scheduled_action' ) ) return;
 		add_action( 'hub_process_queue_event', array( __CLASS__, 'process_batch' ) );
-
-		// اگر زمان‌بندی وجود ندارد، بساز (هر ۱ دقیقه)
-		if ( ! as_next_scheduled_action( 'hub_process_queue_event' ) ) {
-			as_schedule_recurring_action( time(), 60, 'hub_process_queue_event' );
-		}
+		if ( ! as_next_scheduled_action( 'hub_process_queue_event' ) ) as_schedule_recurring_action( time(), 60, 'hub_process_queue_event' );
 	}
 
-	/**
-	 * Process a batch of pending items.
-	 */
 	public static function process_batch() {
-		// دریافت ۵ آیتم از صف
 		$items = Hub_Queue::fetch_batch( 5 );
+		if ( empty( $items ) ) return;
 
-		if ( empty( $items ) ) {
-			return; // صف خالی است
-		}
-
-        // نکته مهم: در نسخه جدید، آدرس مقصد داخل هر آیتم ذخیره شده است
-        // پس نیازی نیست اینجا آدرس کلی را چک کنیم.
 		foreach ( $items as $item ) {
-			self::send_item( $item );
-		}
-	}
+            Hub_Queue::update_status( $item->id, 'processing' );
+            $payload = json_decode($item->payload, true);
+            $success = false;
+            $log_msg = '';
 
-	/**
-	 * Send a single item via HTTP POST
-	 */
-	private static function send_item( $item ) {
-		// تغییر وضعیت به "در حال پردازش"
-		Hub_Queue::update_status( $item->id, 'processing' );
+            try {
+                // 1. n8n
+                if ( $item->event_type === 'n8n.send' ) {
+                    $url = $payload['_webhook_url'] ?? '';
+                    unset($payload['_webhook_url']);
+                    $res = wp_remote_post( $url, [ 'body' => json_encode($payload), 'headers' => ['Content-Type'=>'application/json'], 'timeout'=>20 ] );
+                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = 'Sent to n8n'; }
+                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'HTTP Error'; }
+                }
 
-        // 1. استخراج اطلاعات از JSON
-        $payload_data = json_decode($item->payload, true);
-        
-        // اگر جیسون خراب بود یا خالی بود
-        if ( ! is_array($payload_data) ) {
-            Hub_Queue::update_status( $item->id, 'failed' );
-            Hub_Logger::log( "Event #{$item->id} has invalid JSON payload.", 'error', 'sender' );
-            return;
-        }
+                // 2. SMS (Persian WooCommerce)
+                elseif ( $item->event_type === 'sms.send' ) {
+                    require_once HUB_PLUGIN_DIR . 'integrations/class-persian-wc.php';
+                    if ( Hub_Persian_WC::send_sms( $payload['mobile'], $payload['message'] ) ) {
+                        $success = true; $log_msg = "SMS sent to {$payload['mobile']}";
+                    } else {
+                        $log_msg = 'SMS Provider returned false';
+                    }
+                }
 
-        // 2. پیدا کردن آدرس وب‌هوک مقصد (که Bridge آن را اضافه کرده بود)
-        $target_url = '';
-        if ( isset( $payload_data['_webhook_url'] ) && ! empty( $payload_data['_webhook_url'] ) ) {
-            $target_url = $payload_data['_webhook_url'];
-            
-            // مهم: آدرس را از دیتای ارسالی حذف می‌کنیم که به n8n نرود (چون نیازی ندارد)
-            unset( $payload_data['_webhook_url'] );
-        } else {
-            // اگر آدرس پیدا نشد (خطای سناریو)
-            Hub_Queue::update_status( $item->id, 'failed' );
-            Hub_Logger::log( "No Webhook URL found inside payload for event #{$item->id}", 'error', 'sender' );
-            return;
-        }
+                // 3. Telegram (With Proxy)
+                elseif ( $item->event_type === 'telegram.send' ) {
+                    $args = [ 'body' => [ 'chat_id' => $payload['chat_id'], 'text' => $payload['message'], 'parse_mode' => 'HTML' ], 'timeout'=>15 ];
+                    
+                    // تنظیم پروکسی برای تلگرام
+                    $proxy = get_option('hub_telegram_proxy');
+                    if( !empty($proxy) ) {
+                        // متاسفانه WP_Remote_Post به سادگی از پراکسی پشتیبانی نمی‌کند
+                        // برای سرورهای ایران، بهترین کار استفاده از curl دستی است اگر پراکسی ساکس باشد
+                        // اما برای HTTP Proxy استاندارد:
+                        // $args['proxy'] = $proxy; // در نسخه‌های جدید وردپرس ممکن است کار کند
+                    }
 
-        // 3. آماده‌سازی نهایی داده‌ها برای ارسال
-        $final_body = json_encode( $payload_data, JSON_UNESCAPED_UNICODE );
+                    $api_url = "https://api.telegram.org/bot{$payload['token']}/sendMessage";
+                    $res = wp_remote_post( $api_url, $args );
+                    
+                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) {
+                        $success = true; $log_msg = "Telegram sent to {$payload['chat_id']}";
+                    } else {
+                        $log_msg = is_wp_error($res) ? $res->get_error_message() : 'Telegram API Error';
+                    }
+                }
 
-        // 4. شلیک به n8n 🚀
-		$response = wp_remote_post( $target_url, array(
-			'headers' => array(
-				'Content-Type'  => 'application/json',
-				'X-Hub-Event'   => $item->event_type,
-				'X-Hub-Version' => HUB_VERSION,
-                'X-Hub-Api-Key' => get_option( 'hub_api_key' ), // هدر امنیتی
-			),
-			'body'    => $final_body,
-			'timeout' => 20,
-			'blocking'=> true,
-		) );
+            } catch (Exception $e) { $log_msg = $e->getMessage(); }
 
-		if ( is_wp_error( $response ) ) {
-			// خطای ارتباطی (اینترنت یا سرور)
-			Hub_Queue::update_status( $item->id, 'failed' );
-			Hub_Logger::log( "Send Error #{$item->id}: " . $response->get_error_message(), 'error', 'sender' );
-		} else {
-			$code = wp_remote_retrieve_response_code( $response );
-			if ( $code >= 200 && $code < 300 ) {
-				// موفقیت کامل ✅
-				Hub_Queue::update_status( $item->id, 'completed' );
-				Hub_Logger::log( "Sent #{$item->id} to n8n OK ($code)", 'success', 'sender' );
-			} else {
-				// n8n خطا داد (مثلاً 404 یا 500)
-				Hub_Queue::update_status( $item->id, 'failed' );
-				Hub_Logger::log( "N8N Error #{$item->id}: HTTP $code", 'error', 'sender' );
-			}
+            Hub_Queue::update_status( $item->id, $success ? 'completed' : 'failed' );
+            Hub_Logger::log( $log_msg, $success ? 'success' : 'error', 'sender' );
 		}
 	}
 }
