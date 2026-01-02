@@ -1,27 +1,59 @@
 <?php
-if ( ! defined( 'ABSPATH' ) ) {
-    exit;
-}
 
 /**
- * Webhook sender & Event listener
+ * Listens to WordPress/WooCommerce events and pushes them to the queue.
  */
 class Hub_Bridge {
-    public function __construct() {
-        add_action( 'init', array( $this, 'maybe_handle_incoming' ) );
-    }
 
-    public function send_webhook( $url, $payload ) {
-        wp_remote_post( $url, array( 'body' => wp_json_encode( $payload ), 'headers' => array( 'Content-Type' => 'application/json' ) ) );
-    }
+	/**
+	 * Initialize hooks.
+	 */
+	public static function init() {
+		// گوش دادن به تغییر وضعیت سفارش
+		add_action( 'woocommerce_order_status_changed', array( __CLASS__, 'handle_order_status_change' ), 10, 4 );
+		
+		// گوش دادن به ثبت نام کاربر جدید
+		add_action( 'user_register', array( __CLASS__, 'handle_new_user' ), 10, 1 );
+	}
 
-    public function maybe_handle_incoming() {
-        // Example: simple endpoint via query param ?automation_hub=1?action=...
-        if ( isset( $_GET['automation_hub'] ) ) {
-            // Process incoming event securely
-            status_header( 200 );
-            echo 'OK';
-            exit;
-        }
-    }
+	/**
+	 * Handle order status change.
+	 */
+	public static function handle_order_status_change( $order_id, $from, $to, $order ) {
+		// ساخت پلود استاندارد
+		$payload = array(
+			'source'      => 'woocommerce',
+			'entity'      => 'order',
+			'id'          => $order_id,
+			'event'       => 'status_changed',
+			'from_status' => $from,
+			'to_status'   => $to,
+			'total'       => $order->get_total(),
+			'currency'    => $order->get_currency(),
+			'customer_id' => $order->get_customer_id(),
+			'date'        => current_time('mysql'),
+		);
+
+		// افزودن به صف با اولویت بالا (چون سفارش مهم است)
+		Hub_Queue::push( 'order.status_changed', $payload, 1 );
+	}
+
+	/**
+	 * Handle new user registration.
+	 */
+	public static function handle_new_user( $user_id ) {
+		$user = get_userdata( $user_id );
+		
+		$payload = array(
+			'source' => 'wordpress',
+			'entity' => 'user',
+			'id'     => $user_id,
+			'event'  => 'registered',
+			'email'  => $user->user_email,
+			'roles'  => $user->roles,
+			'date'   => current_time('mysql'),
+		);
+
+		Hub_Queue::push( 'user.registered', $payload, 5 );
+	}
 }
