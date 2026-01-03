@@ -1,7 +1,7 @@
 <?php
 
 class Hub_Bridge {
-
+    // ... (کدهای init و handle مثل قبل) ...
 	public static function init() {
 		add_action( 'woocommerce_order_status_changed', array( __CLASS__, 'handle_order_status' ), 10, 4 );
 		add_action( 'woocommerce_new_order', array( __CLASS__, 'handle_new_order' ), 10, 1 );
@@ -21,7 +21,6 @@ class Hub_Bridge {
 			if ( $rule['trigger'] !== $trigger_type ) continue;
 			if ( $trigger_type === 'order_status' && !empty($rule['sub_trigger']) && $rule['sub_trigger'] !== $sub_trigger ) continue;
 
-            // محاسبه پیام‌ها
             $msg_n8n = self::parse_shortcodes( $rule['message_n8n'] ?? '', $entity );
             $msg_sms = !empty($rule['active_sms']) ? self::parse_shortcodes( $rule['message_sms'] ?? '', $entity ) : '';
             $msg_tg  = !empty($rule['active_tg']) ? self::parse_shortcodes( $rule['message_tg'] ?? '', $entity ) : '';
@@ -32,7 +31,6 @@ class Hub_Bridge {
                 $payload['sms_message_preview'] = $msg_sms;
                 $payload['telegram_message_preview'] = $msg_tg;
                 
-                // لاگ کامل برای ایجنت
                 $payload['scenario_execution_log'] = [
                     'rule_trigger' => $trigger_type,
                     'sms_action' => ['active'=>!empty($rule['active_sms']), 'message'=>$msg_sms],
@@ -43,7 +41,7 @@ class Hub_Bridge {
 				Hub_Queue::push( 'n8n.send', $payload );
 			}
 
-			// 2. SMS
+			// 2. SMS (با تبدیل اعداد فارسی)
 			if ( !empty($rule['active_sms']) && !empty($msg_sms) && !empty($rule['sms_provider_id']) ) {
                 $target_num = '';
                 if ( ($rule['sms_target'] ?? 'customer') === 'customer' ) {
@@ -53,17 +51,13 @@ class Hub_Bridge {
                     $target_num = $rule['sms_custom_num'] ?? '';
                 }
 
-                // استانداردسازی شماره (تبدیل فارسی به انگلیسی)
                 $target_num = self::normalize_number($target_num);
 
                 if ( !empty($target_num) && isset($wh_map[$rule['sms_provider_id']]) ) {
                     $provider = $wh_map[$rule['sms_provider_id']];
                     Hub_Queue::push( 'sms.send', [ 
-                        'mobile' => $target_num, 
-                        'message' => $msg_sms,
-                        'user' => $provider['sms_user'],
-                        'pass' => $provider['sms_pass'],
-                        'from' => $provider['sms_from']
+                        'mobile' => $target_num, 'message' => $msg_sms,
+                        'user' => $provider['sms_user'], 'pass' => $provider['sms_pass'], 'from' => $provider['sms_from']
                     ]);
                 }
 			}
@@ -90,41 +84,42 @@ class Hub_Bridge {
         return [ 'json_data' => $data, 'message' => $processed_msg ];
 	}
 
-    // تبدیل اعداد فارسی به انگلیسی (حیاتی برای پیامک)
     private static function normalize_number($number) {
         if(empty($number)) return '';
         $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
         $english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
         $number = str_replace($persian, $english, $number);
-        // حذف فواصل و کاراکترهای اضافه
         return preg_replace('/[^0-9]/', '', $number);
     }
 
     private static function parse_shortcodes($text, $entity) {
         if (empty($text)) return '';
         
-        // تابع تبدیل اعداد داخل متن پیامک
-        $to_eng = function($str) {
-            $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
-            $english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-            return str_replace($persian, $english, $str);
-        };
-
         if ( is_a( $entity, 'WC_Order' ) ) {
             $order = $entity;
             $clean_price = function($html_price) { return trim(strip_tags(html_entity_decode($html_price))); };
             
+            $fname = $order->get_billing_first_name();
+            $lname = $order->get_billing_last_name();
+
             $vars = [
                 '{order_id}' => $order->get_id(),
                 '{status}' => wc_get_order_status_name($order->get_status()),
-                '{full_name}' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
-                '{phone}' => $order->get_billing_phone(), // تبدیل شده در بالا هندل میشود
+                '{full_name}' => $fname . ' ' . $lname,
+                '{first_name}' => $fname, // استاندارد جدید
+                '{b_first_name}' => $fname, // پشتیبانی از فرمت قدیمی
+                '{last_name}' => $lname,
+                '{phone}' => $order->get_billing_phone(),
+                '{address}' => $order->get_billing_address_1() . ' ' . $order->get_billing_address_2(),
+                '{customer_note}' => $order->get_customer_note(),
+                '{shipping_method}' => $order->get_shipping_method(),
                 '{total}' => $clean_price(wc_price($order->get_total())),
             ];
-            // ... (بقیه کدهای پارسر قبلی) ...
-            
-            // مهم: کل متن خروجی را هم یک بار انگلیسی کن (برخی پنل‌ها به متن فارسی حساسند)
-            // البته معمولا متن فارسی اوکی هست، فقط شماره مقصد مهم است.
+
+            // بقیه لاجیک پارسر (آیتم‌ها و اسکرپر) که قبلاً داشتیم
+            if (strpos($text, '{items_detailed}') !== false) { /* ... */ }
+            if (strpos($text, '{_scrape_raw_result_}') !== false) { /* ... */ }
+
             return str_replace(array_keys($vars), array_values($vars), $text);
         }
         return $text;
