@@ -1,0 +1,41 @@
+.hub-auth-wrapper {
+    max-width: 350px;
+    margin: 20px auto;
+    padding: 25px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    text-align: center;
+    font-family: inherit;
+}
+.hub-auth-wrapper h3 { margin-top: 0; color: #333; }
+.hub-auth-wrapper p { font-size: 13px; color: #666; margin-bottom: 20px; }
+.hub-auth-wrapper input {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #eee;
+    border-radius: 8px;
+    margin-bottom: 15px;
+    font-size: 16px;
+    text-align: center;
+    transition: 0.3s;
+}
+.hub-auth-wrapper input:focus { border-color: #2271b1; outline: none; }
+.hub-btn {
+    width: 100%;
+    padding: 12px;
+    background: #2271b1;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 15px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+.hub-btn:hover { background: #135e96; }
+.hub-btn:disabled { opacity: 0.7; cursor: not-allowed; }
+.hub-link { display: block; margin-top: 15px; font-size: 12px; color: #888; text-decoration: none; }
+.hub-message { margin-top: 15px; padding: 10px; border-radius: 5px; font-size: 13px; display: none; }
+.hub-message.error { background: #ffeaea; color: #d63638; }
+.hub-message.success { background: #e3f9e5; color: #008a20; }

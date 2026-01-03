@@ -292,3 +292,34 @@
     border-top: 1px solid #ddd;
     text-align: left;
 }
+/* ... (کدهای قبلی را نگه دارید) ... */
+
+/* Variable Tags (Smart Chips) */
+.var-list {
+    margin-top: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+}
+
+.var-tag {
+    background: #eef3f7;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 11px;
+    color: #2271b1;
+    cursor: pointer;
+    transition: all 0.2s;
+    user-select: none;
+}
+
+.var-tag:hover {
+    background: #2271b1;
+    color: #fff;
+    border-color: #2271b1;
+}
+
+.var-tag:active {
+    transform: scale(0.95);
+}
