@@ -5,6 +5,7 @@ class Hub_Auth {
 	public static function init() {
 		add_shortcode( 'hub_login_form', array( __CLASS__, 'render_login_form' ) );
 
+		// هندلرهای AJAX
 		add_action( 'wp_ajax_hub_send_otp', array( __CLASS__, 'handle_send_otp' ) );
 		add_action( 'wp_ajax_nopriv_hub_send_otp', array( __CLASS__, 'handle_send_otp' ) );
 
@@ -13,19 +14,17 @@ class Hub_Auth {
         
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 
+        // بررسی تنظیمات یکپارچه‌سازی
         $settings = get_option('hub_auth_settings');
         if ( !empty($settings['active']) ) {
             
-            // اگر گزینه "یکپارچه‌سازی" فعال باشد
+            // 1. مدیریت صفحه "حساب کاربری من" (My Account)
             if ( !empty($settings['unified_login']) ) {
-                // جایگزینی فرم در صفحه My Account ووکامرس
-                add_action( 'woocommerce_login_form_start', function() {
-                    echo '<style>.woocommerce-form-login, .u-column1, .u-column2 { display:none !important; }</style>';
-                    echo do_shortcode('[hub_login_form]');
-                });
+                // این هوک قبل از فرم‌های لاگین/ثبت‌نام اجرا می‌شود (بیرون از فرم)
+                add_action( 'woocommerce_before_customer_login_form', array( __CLASS__, 'render_my_account_login' ) );
             }
 
-            // مدیریت صفحه چک‌اوت (همیشه اگر لاگین نباشد باید ببیند)
+            // 2. مدیریت صفحه "تسویه حساب" (Checkout)
             add_action( 'woocommerce_before_checkout_form', array( __CLASS__, 'manage_checkout_auth' ), 5 );
         }
 	}
@@ -41,16 +40,36 @@ class Hub_Auth {
         ));
     }
 
+    // --- متد جدید برای My Account ---
+    public static function render_my_account_login() {
+        if ( is_user_logged_in() ) return;
+
+        echo '<div class="hub-myaccount-overlay">';
+        echo do_shortcode('[hub_login_form]'); 
+        echo '</div>';
+
+        // مخفی‌سازی هوشمند فرم‌های قالب (تمام کلاس‌های رایج)
+        echo '<style>
+            #customer_login,              /* استاندارد ووکامرس */
+            .u-columns.col2-set,          /* گرید استاندارد */
+            .woocommerce-form-login,      /* فرم لاگین تکی */
+            .woocommerce-form-register,   /* فرم ثبت‌نام تکی */
+            .col-1, .col-2,               /* ستون‌های قالب‌های قدیمی */
+            .account-login-inner          /* برخی قالب‌های مدرن */
+            { display: none !important; }
+        </style>';
+    }
+
+    // --- مدیریت Checkout (مثل قبل) ---
     public static function manage_checkout_auth() {
         if ( is_user_logged_in() ) return;
 
-        // ریدایرکت = current یعنی به همین صفحه چک‌اوت برگرد
         echo '<div class="hub-checkout-overlay">';
         echo '<h3>ورود / ثبت‌نام جهت تکمیل خرید</h3>';
         echo do_shortcode('[hub_login_form redirect="current"]'); 
         echo '</div>';
 
-        echo '<style>form.checkout.woocommerce-checkout, .woocommerce-info { display: none !important; }</style>';
+        echo '<style>form.checkout.woocommerce-checkout, .woocommerce-info, .woocommerce-form-login-toggle { display: none !important; }</style>';
     }
 
 	public static function render_login_form( $atts ) {
@@ -59,16 +78,12 @@ class Hub_Auth {
             return "<div class='hub-logged-in-msg'>✅ {$u->display_name} عزیز، وارد شده‌اید.</div>";
         }
 
-        // لاجیک دریافت آدرس ریدایرکت
         $atts = shortcode_atts( array( 'redirect' => '' ), $atts );
         $redirect_url = $atts['redirect'];
         
         if ( $redirect_url === 'current' ) {
             global $wp;
             $redirect_url = home_url( add_query_arg( array(), $wp->request ) );
-        } elseif ( empty($redirect_url) ) {
-            // اگر در شورت‌کد چیزی نبود، خالی بگذار تا JS بعداً تصمیم بگیرد (یا از تنظیمات بخواند)
-            $redirect_url = '';
         }
 
         wp_enqueue_script( 'hub-auth-js' );
@@ -115,7 +130,7 @@ class Hub_Auth {
     public static function handle_send_otp() {
 		if ( ! check_ajax_referer( 'hub_auth_nonce', 'nonce', false ) ) wp_send_json_error( 'خطای امنیتی.' );
         $phone = self::normalize_number( isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '' );
-        if ( ! preg_match( '/^09[0-9]{9}$/', $phone ) ) wp_send_json_error( 'شماره معتبر نیست (مثال: 0912...)' );
+        if ( ! preg_match( '/^09[0-9]{9}$/', $phone ) ) wp_send_json_error( 'شماره معتبر نیست.' );
 
         $rate_limit = get_option('hub_auth_settings')['rate_limit'] ?? 120;
         $last_sent = get_transient( 'hub_otp_time_' . $phone );
@@ -137,8 +152,6 @@ class Hub_Auth {
 		
         $phone = self::normalize_number( isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '' );
         $otp_user = sanitize_text_field( $_POST['otp'] );
-        
-        // **فیکس ریدایرکت**: گرفتن آدرس از JS
         $client_redirect = isset($_POST['redirect_to']) ? esc_url_raw($_POST['redirect_to']) : '';
 
         $cached_otp = get_transient( 'hub_otp_code_' . $phone );
@@ -152,15 +165,11 @@ class Hub_Auth {
             self::sync_guest_orders( $user->ID, $phone );
             delete_transient( 'hub_otp_code_' . $phone );
 
-            // اولویت‌بندی ریدایرکت
             $final_redirect = home_url();
             $settings = get_option('hub_auth_settings');
             
-            if ( !empty($client_redirect) ) {
-                $final_redirect = $client_redirect; // اولویت ۱: آدرس صفحه جاری (مثل چک‌اوت)
-            } elseif ( !empty($settings['redirect_url']) ) {
-                $final_redirect = $settings['redirect_url']; // اولویت ۲: تنظیمات
-            }
+            if ( !empty($client_redirect) ) $final_redirect = $client_redirect;
+            elseif ( !empty($settings['redirect_url']) ) $final_redirect = $settings['redirect_url'];
 
             wp_send_json_success( array( 'redirect' => $final_redirect, 'msg' => 'خوش آمدید!' ) );
         } else {
