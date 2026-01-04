@@ -323,3 +323,114 @@
 .var-tag:active {
     transform: scale(0.95);
 }
+/* استایل کلی */
+.hub-auth-wrapper {
+    max-width: 400px;
+    margin: 20px auto;
+    padding: 30px;
+    border: 1px solid #e0e0e0;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 5px 20px rgba(0,0,0,0.05);
+    font-family: inherit;
+    text-align: center;
+    position: relative;
+}
+
+/* در صفحه چک‌اوت */
+.hub-checkout-auth-overlay {
+    background: #f8f9fa;
+    padding: 40px 0;
+    text-align: center;
+    border-radius: 8px;
+    margin-bottom: 30px;
+}
+.hub-checkout-auth-overlay h3 {
+    margin-bottom: 20px;
+    font-size: 18px;
+    color: #333;
+}
+
+.hub-label {
+    display: block;
+    margin-bottom: 8px;
+    font-weight: 500;
+    color: #444;
+    text-align: right;
+}
+
+/* اینپوت‌ها */
+.hub-input-group {
+    position: relative;
+}
+.hub-auth-wrapper input[type="tel"],
+.hub-auth-wrapper input[type="text"] {
+    width: 100%;
+    padding: 12px;
+    border: 2px solid #ddd;
+    border-radius: 8px;
+    font-size: 18px;
+    text-align: center;
+    letter-spacing: 2px;
+    transition: border 0.3s;
+    outline: none;
+    box-sizing: border-box;
+    margin-bottom: 15px;
+}
+.hub-auth-wrapper input:focus {
+    border-color: #2271b1;
+}
+
+/* OTP Input */
+#hub-otp {
+    font-size: 24px;
+    letter-spacing: 10px;
+    font-weight: bold;
+}
+
+/* دکمه‌ها */
+.hub-btn {
+    width: 100%;
+    padding: 12px;
+    background: #2271b1;
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    font-size: 16px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+.hub-btn:hover { background: #135e96; }
+.hub-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+/* تایمر و لینک‌ها */
+.hub-timer-box {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    font-size: 13px;
+    color: #666;
+}
+#hub-timer { font-weight: bold; color: #333; font-family: monospace; font-size: 14px; }
+
+.hub-resend-link { color: #2271b1; text-decoration: none; }
+.hub-resend-link.disabled { color: #aaa; pointer-events: none; cursor: default; }
+
+.hub-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+.hub-small-link { font-size: 12px; color: #888; text-decoration: none; margin-top: 5px; }
+
+/* پیام‌ها */
+.hub-message {
+    margin-top: 15px;
+    padding: 10px;
+    border-radius: 6px;
+    font-size: 13px;
+    display: none;
+}
+.hub-message.error { background: #ffeaea; color: #d63638; border: 1px solid #ffd0d0; }
+.hub-message.success { background: #e3f9e5; color: #008a20; border: 1px solid #c9e8cd; }
