@@ -3,29 +3,29 @@
 class Hub_Auth {
 
 	public static function init() {
-		// 1. ثبت شورت‌کد فرم ورود
 		add_shortcode( 'hub_login_form', array( __CLASS__, 'render_login_form' ) );
 
-		// 2. هندل کردن درخواست‌های AJAX
 		add_action( 'wp_ajax_hub_send_otp', array( __CLASS__, 'handle_send_otp' ) );
 		add_action( 'wp_ajax_nopriv_hub_send_otp', array( __CLASS__, 'handle_send_otp' ) );
 
 		add_action( 'wp_ajax_hub_verify_otp', array( __CLASS__, 'handle_verify_otp' ) );
 		add_action( 'wp_ajax_nopriv_hub_verify_otp', array( __CLASS__, 'handle_verify_otp' ) );
         
-        // 3. لود استایل و اسکریپت
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 
-        // 4. یکپارچه‌سازی با ووکامرس (اگر در تنظیمات فعال باشد)
         $settings = get_option('hub_auth_settings');
         if ( !empty($settings['active']) ) {
-            // جایگزینی فرم لاگین استاندارد ووکامرس
-            add_action( 'woocommerce_login_form_start', function() {
-                echo do_shortcode('[hub_login_form]'); 
-                echo '<style>.woocommerce-form-login {display:none !important;}</style>';
-            });
+            
+            // اگر گزینه "یکپارچه‌سازی" فعال باشد
+            if ( !empty($settings['unified_login']) ) {
+                // جایگزینی فرم در صفحه My Account ووکامرس
+                add_action( 'woocommerce_login_form_start', function() {
+                    echo '<style>.woocommerce-form-login, .u-column1, .u-column2 { display:none !important; }</style>';
+                    echo do_shortcode('[hub_login_form]');
+                });
+            }
 
-            // مدیریت صفحه تسویه حساب (Checkout Logic)
+            // مدیریت صفحه چک‌اوت (همیشه اگر لاگین نباشد باید ببیند)
             add_action( 'woocommerce_before_checkout_form', array( __CLASS__, 'manage_checkout_auth' ), 5 );
         }
 	}
@@ -41,40 +41,34 @@ class Hub_Auth {
         ));
     }
 
-    // --- مدیریت صفحه چک‌اوت ---
     public static function manage_checkout_auth() {
-        if ( is_user_logged_in() ) {
-            return; // اگر لاگین است، کاری نداریم (فرم‌ها عادی نمایش داده می‌شوند)
-        }
+        if ( is_user_logged_in() ) return;
 
-        // اگر لاگین نیست:
-        // 1. نمایش فرم ورود ما
-        echo '<div class="hub-checkout-auth-overlay">';
+        // ریدایرکت = current یعنی به همین صفحه چک‌اوت برگرد
+        echo '<div class="hub-checkout-overlay">';
         echo '<h3>ورود / ثبت‌نام جهت تکمیل خرید</h3>';
-        echo do_shortcode('[hub_login_form redirect="current"]'); // ریدایرکت به همین صفحه
+        echo do_shortcode('[hub_login_form redirect="current"]'); 
         echo '</div>';
 
-        // 2. مخفی کردن فرم اصلی چک‌اوت با CSS (روش امن برای جلوگیری از پر کردن فرم)
-        echo '<style>
-            form.checkout.woocommerce-checkout { display: none !important; }
-            .woocommerce-info { display: none !important; } /* مخفی کردن پیام‌های پیش‌فرض وو */
-        </style>';
+        echo '<style>form.checkout.woocommerce-checkout, .woocommerce-info { display: none !important; }</style>';
     }
 
-	// --- رندر فرم (HTML) ---
 	public static function render_login_form( $atts ) {
         if ( is_user_logged_in() ) {
             $u = wp_get_current_user();
-            return "<div class='hub-logged-in-msg'>✅ {$u->display_name} عزیز، خوش آمدید.</div>";
+            return "<div class='hub-logged-in-msg'>✅ {$u->display_name} عزیز، وارد شده‌اید.</div>";
         }
 
-        // مدیریت ریدایرکت (از شورت‌کد یا تنظیمات)
+        // لاجیک دریافت آدرس ریدایرکت
         $atts = shortcode_atts( array( 'redirect' => '' ), $atts );
         $redirect_url = $atts['redirect'];
+        
         if ( $redirect_url === 'current' ) {
-            // آدرس فعلی صفحه با پارامترها
             global $wp;
             $redirect_url = home_url( add_query_arg( array(), $wp->request ) );
+        } elseif ( empty($redirect_url) ) {
+            // اگر در شورت‌کد چیزی نبود، خالی بگذار تا JS بعداً تصمیم بگیرد (یا از تنظیمات بخواند)
+            $redirect_url = '';
         }
 
         wp_enqueue_script( 'hub-auth-js' );
@@ -85,28 +79,29 @@ class Hub_Auth {
 		<div class="hub-auth-wrapper">
             <input type="hidden" id="hub-redirect-to" value="<?php echo esc_url($redirect_url); ?>">
 
-            <div id="hub-step-phone" class="hub-step active">
-				<p class="hub-label">شماره موبایل خود را وارد کنید:</p>
-				<div class="hub-input-group">
+			<div id="hub-step-phone" class="hub-step active">
+				<p class="hub-title">ورود با شماره موبایل</p>
+				<div class="hub-input-row">
                     <input type="tel" id="hub-phone" placeholder="09xxxxxxxxx" dir="ltr" maxlength="11" pattern="[0-9]*" inputmode="numeric">
-				    <button type="button" id="hub-btn-send" class="hub-btn">ارسال کد</button>
                 </div>
+                <button type="button" id="hub-btn-send" class="hub-btn">ارسال کد تایید</button>
 			</div>
 
-            <div id="hub-step-verify" class="hub-step" style="display:none;">
-				<p class="hub-label">کد ارسال شده به <span id="hub-phone-display" style="font-weight:bold"></span></p>
-				<div class="hub-otp-group">
+			<div id="hub-step-verify" class="hub-step" style="display:none;">
+                <p class="hub-subtitle">کد تایید به <span id="hub-phone-display"></span> ارسال شد</p>
+				
+                <div class="hub-otp-row">
                     <input type="text" id="hub-otp" placeholder="- - - -" maxlength="4" autocomplete="one-time-code" inputmode="numeric">
                 </div>
                 
-                <div class="hub-timer-box">
+                <div class="hub-timer-row">
                     <span id="hub-timer">02:00</span>
-                    <a href="#" id="hub-btn-resend" class="hub-resend-link disabled">ارسال مجدد کد</a>
+                    <a href="#" id="hub-btn-resend" class="hub-link-btn disabled">ارسال مجدد کد</a>
                 </div>
                 
-                <div class="hub-actions">
-				    <button type="button" id="hub-btn-verify" class="hub-btn">ورود</button>
-                    <a href="#" id="hub-btn-edit" class="hub-small-link">اصلاح شماره</a>
+                <div class="hub-footer-row">
+				    <button type="button" id="hub-btn-verify" class="hub-btn">ورود به سیستم</button>
+                    <a href="#" id="hub-btn-edit" class="hub-link-back">اصلاح شماره</a>
                 </div>
 			</div>
             
@@ -116,14 +111,11 @@ class Hub_Auth {
 		return ob_get_clean();
 	}
 
-    // --- هندلرهای AJAX (بدون تغییر نسبت به نسخه امن قبلی) ---
-    // فقط در handle_verify_otp باید ریدایرکت داینامیک را از کلاینت بگیریم
-    
+    // --- AJAX HANDLERS ---
     public static function handle_send_otp() {
 		if ( ! check_ajax_referer( 'hub_auth_nonce', 'nonce', false ) ) wp_send_json_error( 'خطای امنیتی.' );
-        
         $phone = self::normalize_number( isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '' );
-        if ( ! preg_match( '/^09[0-9]{9}$/', $phone ) ) wp_send_json_error( 'شماره موبایل معتبر نیست.' );
+        if ( ! preg_match( '/^09[0-9]{9}$/', $phone ) ) wp_send_json_error( 'شماره معتبر نیست (مثال: 0912...)' );
 
         $rate_limit = get_option('hub_auth_settings')['rate_limit'] ?? 120;
         $last_sent = get_transient( 'hub_otp_time_' . $phone );
@@ -136,8 +128,8 @@ class Hub_Auth {
         set_transient( 'hub_otp_code_' . $phone, $otp, 5 * 60 );
         set_transient( 'hub_otp_time_' . $phone, time(), $rate_limit );
 
-        do_action( 'hub_auth_request', $phone, $otp ); // برای ارسال پیامک
-		wp_send_json_success( 'کد ارسال شد.' );
+        do_action( 'hub_auth_request', $phone, $otp );
+		wp_send_json_success( 'کد تایید ارسال شد.' );
 	}
 
 	public static function handle_verify_otp() {
@@ -146,11 +138,11 @@ class Hub_Auth {
         $phone = self::normalize_number( isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '' );
         $otp_user = sanitize_text_field( $_POST['otp'] );
         
-        // دریافت آدرس ریدایرکت از سمت کلاینت (اگر ست شده باشد)
+        // **فیکس ریدایرکت**: گرفتن آدرس از JS
         $client_redirect = isset($_POST['redirect_to']) ? esc_url_raw($_POST['redirect_to']) : '';
 
         $cached_otp = get_transient( 'hub_otp_code_' . $phone );
-        if ( empty($cached_otp) || $cached_otp != $otp_user ) wp_send_json_error( 'کد اشتباه یا منقضی شده است.' );
+        if ( empty($cached_otp) || $cached_otp != $otp_user ) wp_send_json_error( 'کد تایید اشتباه است.' );
 
         $user = self::get_or_create_user( $phone );
         if ( ! is_wp_error( $user ) ) {
@@ -160,14 +152,14 @@ class Hub_Auth {
             self::sync_guest_orders( $user->ID, $phone );
             delete_transient( 'hub_otp_code_' . $phone );
 
-            // اولویت ریدایرکت: ۱. آدرس ارسالی کلاینت (مثل چک‌اوت) ۲. تنظیمات پلاگین ۳. صفحه اصلی
+            // اولویت‌بندی ریدایرکت
             $final_redirect = home_url();
             $settings = get_option('hub_auth_settings');
             
             if ( !empty($client_redirect) ) {
-                $final_redirect = $client_redirect;
+                $final_redirect = $client_redirect; // اولویت ۱: آدرس صفحه جاری (مثل چک‌اوت)
             } elseif ( !empty($settings['redirect_url']) ) {
-                $final_redirect = $settings['redirect_url'];
+                $final_redirect = $settings['redirect_url']; // اولویت ۲: تنظیمات
             }
 
             wp_send_json_success( array( 'redirect' => $final_redirect, 'msg' => 'خوش آمدید!' ) );
@@ -176,8 +168,6 @@ class Hub_Auth {
         }
 	}
 
-    // توابع کمکی (get_or_create_user, sync_guest_orders, normalize_number) مشابه قبل...
-    // (برای صرفه‌جویی در فضا، فرض می‌کنیم کدهای قبلی این بخش اینجا هستند. اگر نداری بگو بفرستم)
     private static function normalize_number($number) {
         $number = preg_replace('/[^0-9]/', '', $number);
         $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
@@ -191,17 +181,14 @@ class Hub_Auth {
     private static function get_or_create_user( $phone ) {
         $users = get_users( array('meta_key' => 'billing_phone', 'meta_value' => $phone, 'number' => 1) );
         if ( ! empty( $users ) ) return $users[0];
-
         $username = $phone;
         if ( username_exists( $username ) ) {
             $user = get_user_by( 'login', $username );
             update_user_meta( $user->ID, 'billing_phone', $phone );
             return $user;
         }
-
         $user_id = wp_create_user( $username, wp_generate_password(), $phone . '@' . $_SERVER['HTTP_HOST'] );
         if ( is_wp_error( $user_id ) ) return $user_id;
-
         $user = new WP_User( $user_id );
         $user->set_role( 'customer' );
         update_user_meta( $user_id, 'billing_phone', $phone );
