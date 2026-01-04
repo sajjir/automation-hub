@@ -1,130 +1,114 @@
 jQuery(document).ready(function($) {
-    var $wrapper = $('.hub-auth-wrapper');
-    var $stepPhone = $('#hub-step-phone');
-    var $stepVerify = $('#hub-step-verify');
-    var $msg = $('#hub-message');
-    var $otpInput = $('#hub-otp');
-    var $resendLink = $('#hub-btn-resend');
-    var $timerDisplay = $('#hub-timer');
     
-    var countdownInterval;
-
-    // 1. ارسال OTP
-    $('#hub-btn-send, #hub-btn-resend').on('click', function(e) {
-        e.preventDefault();
+    // --- 1. مدیریت اتصالات (Connections) ---
+    
+    // تغییر نوع وب‌هوک (نمایش فیلدهای مربوطه)
+    $(document).on('change', '.input-type', function() {
+        var type = $(this).val();
+        var row = $(this).closest('.repeater-row');
         
-        // اگر دکمه ریسند غیرفعال است کاری نکن
-        if($(this).attr('id') === 'hub-btn-resend' && $(this).hasClass('disabled')) return;
-
-        var phone = $('#hub-phone').val();
-        if(phone.length < 10) { showMsg('لطفا شماره معتبر وارد کنید', 'error'); return; }
-
-        var btn = $('#hub-btn-send'); // دکمه اصلی
-        btn.addClass('loading').prop('disabled', true).text('در حال ارسال...');
-        $msg.hide();
-
-        $.post(hubAuth.ajax_url, {
-            action: 'hub_send_otp',
-            nonce: hubAuth.nonce,
-            phone: phone
-        }, function(res) {
-            btn.removeClass('loading').prop('disabled', false).text('ارسال کد');
-            if(res.success) {
-                $stepPhone.hide();
-                $stepVerify.fadeIn();
-                $('#hub-phone-display').text(phone);
-                $otpInput.val('').focus();
-                
-                // شروع تایمر
-                startTimer(hubAuth.timer_limit || 120);
-                
-                showMsg(res.data, 'success');
-            } else {
-                showMsg(res.data, 'error');
-            }
-        });
-    });
-
-    // 2. بررسی OTP (دستی)
-    $('#hub-btn-verify').on('click', function() {
-        verifyOtp();
-    });
-
-    // 3. تایید خودکار (Auto Submit)
-    $otpInput.on('keyup input', function() {
-        var val = $(this).val();
-        // فقط عدد
-        this.value = val.replace(/[^0-9]/g, '');
-        
-        // اگر ۴ رقم شد، ارسال کن
-        if (this.value.length === 4) {
-            verifyOtp();
+        row.find('.field-group').hide(); // مخفی کردن همه
+        if(type === 'melipayamak') {
+            row.find('.field-sms').css('display', 'flex'); // نمایش فیلدهای پیامک
+        } else {
+            row.find('.field-url').show(); // نمایش فیلد URL
         }
     });
 
-    function verifyOtp() {
-        var otp = $otpInput.val();
-        var phone = $('#hub-phone').val();
-        var redirectTo = $('#hub-redirect-to').val(); // آدرس مقصد
-
-        if(otp.length < 4) { showMsg('کد ۴ رقمی است', 'error'); return; }
-
-        var btn = $('#hub-btn-verify');
-        btn.addClass('loading').prop('disabled', true).text('...');
-
-        $.post(hubAuth.ajax_url, {
-            action: 'hub_verify_otp',
-            nonce: hubAuth.nonce,
-            phone: phone,
-            otp: otp,
-            redirect_to: redirectTo // ارسال آدرس به سرور
-        }, function(res) {
-            if(res.success) {
-                showMsg(res.data.msg, 'success');
-                // ریدایرکت
-                window.location.href = res.data.redirect;
-            } else {
-                btn.removeClass('loading').prop('disabled', false).text('ورود');
-                showMsg(res.data, 'error');
-                $otpInput.val('').focus(); // پاک کردن کد غلط
-            }
-        });
-    }
-
-    // 4. تایمر معکوس
-    function startTimer(duration) {
-        clearInterval(countdownInterval);
-        var timer = duration, minutes, seconds;
-        
-        $resendLink.addClass('disabled');
-        
-        countdownInterval = setInterval(function () {
-            minutes = parseInt(timer / 60, 10);
-            seconds = parseInt(timer % 60, 10);
-
-            minutes = minutes < 10 ? "0" + minutes : minutes;
-            seconds = seconds < 10 ? "0" + seconds : seconds;
-
-            $timerDisplay.text(minutes + ":" + seconds);
-
-            if (--timer < 0) {
-                clearInterval(countdownInterval);
-                $resendLink.removeClass('disabled');
-                $timerDisplay.text(""); // مخفی کردن تایمر صفر شده
-            }
-        }, 1000);
-    }
-
-    // 5. اصلاح شماره
-    $('#hub-btn-edit').on('click', function(e) {
+    // دکمه افزودن اتصال
+    $('#add-webhook').on('click', function(e) {
         e.preventDefault();
-        clearInterval(countdownInterval);
-        $stepVerify.hide();
-        $stepPhone.fadeIn();
-        $msg.hide();
+        var tpl = $('#webhook-template').html().replace(/INDEX/g, $('.webhook-row').length);
+        $('#webhooks-container').append(tpl);
+        // تریگر کردن تغییر برای تنظیم اولیه فیلدها
+        $('#webhooks-container .webhook-row:last .input-type').trigger('change');
     });
 
-    function showMsg(text, type) {
-        $msg.removeClass('success error').addClass(type).text(text).slideDown();
+    // --- 2. مدیریت سناریوها (Campaigns) ---
+
+    // دکمه افزودن سناریو
+    $('#add-rule').on('click', function(e) {
+        e.preventDefault();
+        var tpl = $('#rule-template').html().replace(/INDEX/g, $('.rule-row').length);
+        var newRow = $(tpl);
+        $('#rules-container').append(newRow);
+        $('.no-data-msg').remove();
+        
+        initLogic(); // راه‌اندازی لاجیک برای سطر جدید
+        
+        // باز کردن خودکار
+        newRow.find('.rule-header').trigger('click');
+        // اسکرول به پایین
+        $('html, body').animate({ scrollTop: newRow.offset().top - 50 }, 500);
+    });
+
+    // باز و بسته کردن آکاردئون
+    $(document).on('click', '.rule-header', function() {
+        $(this).closest('.rule-row').toggleClass('open');
+    });
+
+    // جلوگیری از بستن وقتی روی بادی کلیک میشه
+    $(document).on('click', '.rule-body', function(e) {
+        e.stopPropagation();
+    });
+
+    // حذف سطر (مشترک)
+    $(document).on('click', '.remove-row', function(e) {
+        e.stopPropagation();
+        if(confirm('آیا مطمئن هستید؟')) {
+            $(this).closest('.repeater-row').slideUp(300, function(){ $(this).remove(); });
+        }
+    });
+
+    // --- 3. ویژگی جدید: آپدیت نام سناریو ---
+    $(document).on('input', '.rule-name-input', function() {
+        var val = $(this).val();
+        var headerTitle = $(this).closest('.rule-row').find('.rule-name-display');
+        if(val.length > 0) {
+            headerTitle.text(val);
+        } else {
+            headerTitle.text('سناریو جدید');
+        }
+    });
+
+    // --- 4. لاجیک شرطی ---
+    function initLogic() {
+        // تغییر تریگر
+        $('.trigger-select').off('change').on('change', function() {
+            var val = $(this).val();
+            var row = $(this).closest('.rule-row');
+            // فقط برای تریگر "تغییر وضعیت سفارش" ساب-تریگر را نشان بده
+            val === 'order_status' ? row.find('.sub-trigger-select').show() : row.find('.sub-trigger-select').hide();
+        }).trigger('change');
+
+        // تاگل کردن اکشن‌ها (رنگی شدن کارت)
+        $('.toggle-action').off('change').on('change', function() {
+            var col = $(this).closest('.action-col');
+            $(this).is(':checked') ? col.addClass('active') : col.removeClass('active');
+        }).trigger('change');
+
+        // انتخاب تارگت پیامک
+        $('.sms-target-select').off('change').on('change', function() {
+            var input = $(this).siblings('.sms-custom-input');
+            $(this).val() === 'custom' ? input.show() : input.hide();
+        }).trigger('change');
     }
+
+    // --- 5. متغیرهای هوشمند (Click-to-Insert) ---
+    $(document).on('click', '.var-tag', function() {
+        var textToInsert = $(this).data('insert');
+        var textarea = $(this).closest('.action-body').find('.msg-input');
+        
+        var cursorPos = textarea.prop('selectionStart');
+        var v = textarea.val();
+        var textBefore = v.substring(0,  cursorPos);
+        var textAfter  = v.substring(cursorPos, v.length);
+        
+        textarea.val(textBefore + textToInsert + textAfter);
+        textarea.focus();
+    });
+
+    // اجرای اولیه
+    initLogic();
+    $('.input-type').trigger('change');
 });

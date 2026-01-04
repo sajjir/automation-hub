@@ -77,10 +77,11 @@ class Hub_Admin {
             update_option('hub_webhooks', $clean);
         }
 
-        // 2. سناریوها
+        // 2. سناریوها (ذخیره نام سناریو اضافه شد)
         if(isset($_POST['rules'])) {
             $clean_rules = [];
             foreach($_POST['rules'] as $rule) {
+                $rule['name'] = sanitize_text_field($rule['name'] ?? ''); // نام سناریو
                 $rule['message_n8n'] = wp_kses_post($rule['message_n8n'] ?? '');
                 $rule['message_sms'] = sanitize_textarea_field($rule['message_sms'] ?? '');
                 $rule['message_tg'] = wp_kses_post($rule['message_tg'] ?? '');
@@ -89,11 +90,11 @@ class Hub_Admin {
             update_option('hub_rules', $clean_rules);
         }
 
-        // 3. تنظیمات سیستم (Auth)
-        if(isset($_POST['hub_auth_active'])) { // تریگر ذخیره این بخش
+        // 3. تنظیمات سیستم
+        if(isset($_POST['hub_auth_active'])) {
             $auth_settings = [
                 'active' => isset($_POST['hub_auth_active']) ? 1 : 0,
-                'unified_login' => isset($_POST['hub_auth_unified']) ? 1 : 0, // فیلد جدید
+                'unified_login' => isset($_POST['hub_auth_unified']) ? 1 : 0,
                 'redirect_url' => esc_url_raw($_POST['hub_auth_redirect']),
                 'rate_limit' => intval($_POST['hub_auth_rate_limit']),
                 'google_login' => isset($_POST['hub_auth_google']) ? 1 : 0,
@@ -105,7 +106,7 @@ class Hub_Admin {
         if(isset($_POST['gen_key'])) Hub_Security::generate_api_key();
     }
 
-	// --- TAB 1 ---
+	// --- TAB 1: CONNECTIONS ---
 	private static function render_connections_tab() {
 		$webhooks = get_option('hub_webhooks', []);
         $proxy = get_option('hub_telegram_proxy', '');
@@ -115,109 +116,159 @@ class Hub_Admin {
         <div class="hub-grid">
             <div class="hub-col-2">
                 <div class="hub-card">
-                    <div class="hub-card-header"><h3>لیست اتصالات</h3><button type="button" class="button" id="add-webhook">+ افزودن</button></div>
-                    <div class="hub-card-body" id="webhooks-container"><?php if(empty($webhooks)): self::render_webhook_row(0, [], true); else: foreach($webhooks as $i => $wh) self::render_webhook_row($i, $wh); endif; ?></div>
+                    <div class="hub-card-header">
+                        <h3>لیست اتصالات</h3>
+                        <button type="button" class="button" id="add-webhook">+ افزودن اتصال</button>
+                    </div>
+                    <div class="hub-card-body" id="webhooks-container">
+                        <?php if(empty($webhooks)): self::render_webhook_row(0, [], true); else: foreach($webhooks as $i => $wh) self::render_webhook_row($i, $wh); endif; ?>
+                    </div>
                 </div>
             </div>
             <div class="hub-col-1">
-                <div class="hub-card"><div class="hub-card-header"><h3>⚙️ سرویس‌ها</h3></div><div class="hub-card-body"><p><strong>وضعیت پیامک:</strong></p><?php echo $sms_status_html; ?><hr><label><strong>پروکسی تلگرام:</strong></label><input type="text" name="telegram_proxy" value="<?php echo esc_attr($proxy); ?>" class="regular-text full-width" placeholder="ip:port"></div></div>
-                <div class="hub-card"><div class="hub-card-header"><h3>🔒 امنیت API</h3></div><div class="hub-card-body"><input type="text" value="<?php echo esc_attr(Hub_Security::get_api_key()); ?>" class="code-input full-width" readonly></div></div>
+                <div class="hub-card">
+                    <div class="hub-card-header"><h3>⚙️ وضعیت سرویس‌ها</h3></div>
+                    <div class="hub-card-body">
+                        <p><strong>وضعیت پیامک:</strong></p><?php echo $sms_status_html; ?>
+                        <hr>
+                        <label><strong>پروکسی تلگرام:</strong></label>
+                        <input type="text" name="telegram_proxy" value="<?php echo esc_attr($proxy); ?>" class="regular-text full-width" placeholder="ip:port">
+                    </div>
+                </div>
+                <div class="hub-card">
+                     <div class="hub-card-header"><h3>🔒 امنیت API</h3></div>
+                     <div class="hub-card-body"><input type="text" value="<?php echo esc_attr(Hub_Security::get_api_key()); ?>" class="code-input full-width" readonly></div>
+                </div>
             </div>
         </div>
-        <template id="webhook-template"><?php self::render_webhook_row('INDEX', [], true); ?></template>
+        <div id="webhook-template" style="display:none;"><?php self::render_webhook_row('INDEX', [], true); ?></div>
 		<?php
 	}
 
-    // --- TAB 2: SETTINGS (UPDATED) ---
+    private static function render_webhook_row($index, $data = [], $is_template = false) {
+        $type = $data['type'] ?? 'webhook';
+        // کلاس‌های CSS دقیق برای JS
+        ?>
+        <div class="repeater-row webhook-row">
+            <div class="row-fields">
+                <div style="flex:1"><input type="text" name="webhooks[<?php echo $index; ?>][name]" value="<?php echo esc_attr($data['name']??''); ?>" placeholder="نام (مثلاً n8n اصلی)" class="input-name full-width"></div>
+                <div style="flex:1">
+                    <select name="webhooks[<?php echo $index; ?>][type]" class="input-type full-width">
+                        <option value="webhook" <?php selected($type, 'webhook'); ?>>🌐 n8n Webhook</option>
+                        <option value="telegram" <?php selected($type, 'telegram'); ?>>✈️ Telegram Bot</option>
+                        <option value="melipayamak" <?php selected($type, 'melipayamak'); ?>>📩 ملی پیامک</option>
+                    </select>
+                </div>
+                
+                <div class="dynamic-fields" style="flex:2">
+                    <div class="field-group field-url" style="<?php echo ($type=='melipayamak') ? 'display:none;' : ''; ?>">
+                        <input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="Webhook URL یا Token" class="input-url full-width">
+                    </div>
+                    
+                    <div class="field-group field-sms" style="<?php echo ($type!='melipayamak') ? 'display:none;' : 'display:flex; gap:5px;'; ?>">
+                        <input type="text" name="webhooks[<?php echo $index; ?>][sms_user]" value="<?php echo esc_attr($data['sms_user']??''); ?>" placeholder="نام کاربری" style="width:33%">
+                        <input type="text" name="webhooks[<?php echo $index; ?>][sms_pass]" value="<?php echo esc_attr($data['sms_pass']??''); ?>" placeholder="رمز عبور" style="width:33%">
+                        <input type="text" name="webhooks[<?php echo $index; ?>][sms_from]" value="<?php echo esc_attr($data['sms_from']??''); ?>" placeholder="شماره خط" style="width:33%">
+                    </div>
+                </div>
+
+                <div style="width:30px;"><span class="dashicons dashicons-trash remove-row" title="حذف"></span></div>
+            </div>
+        </div>
+        <?php
+    }
+
+    // --- TAB 2: SETTINGS ---
     private static function render_settings_tab() {
         $defaults = ['active'=>0, 'unified_login'=>0, 'redirect_url'=>'', 'rate_limit'=>120, 'google_login'=>0];
         $settings = wp_parse_args(get_option('hub_auth_settings', []), $defaults);
         ?>
         <div class="hub-card">
-            <div class="hub-card-header"><h3>🔐 تنظیمات ورود و ثبت‌نام (Authentication)</h3></div>
+            <div class="hub-card-header"><h3>🔐 تنظیمات ورود و ثبت‌نام</h3></div>
             <div class="hub-card-body">
                 <table class="form-table">
-                    <tr>
-                        <th scope="row">سیستم لاگین (OTP)</th>
-                        <td>
-                            <label class="switch-label">
-                                <input type="checkbox" name="hub_auth_active" value="1" <?php checked($settings['active']); ?>>
-                                فعال‌سازی سیستم ورود با شماره موبایل
-                            </label>
-                            <p class="description">با فعال‌سازی این گزینه، شورت‌کد <code>[hub_login_form]</code> فعال می‌شود.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">یکپارچه‌سازی ووکامرس</th>
-                        <td>
-                            <label class="switch-label">
-                                <input type="checkbox" name="hub_auth_unified" value="1" <?php checked($settings['unified_login']); ?>>
-                                جایگزینی فرم‌های پیش‌فرض ووکامرس
-                            </label>
-                            <p class="description">اگر فعال باشد، در صفحه "حساب کاربری من" و "تسویه حساب"، فرم ورود پلاگین جایگزین فرم اصلی می‌شود.</p>
-                        </td>
-                    </tr>
-                    <tr>
-                        <th scope="row">محدودیت زمانی (Rate Limit)</th>
-                        <td><input type="number" name="hub_auth_rate_limit" value="<?php echo esc_attr($settings['rate_limit']); ?>" class="small-text"> ثانیه</td>
-                    </tr>
-                    <tr>
-                        <th scope="row">هدایت پیش‌فرض</th>
-                        <td>
-                            <input type="url" name="hub_auth_redirect" value="<?php echo esc_attr($settings['redirect_url']); ?>" class="regular-text" placeholder="https://...">
-                            <p class="description">آدرس پیش‌فرض پس از ورود (اگر در صفحه خاصی مثل چک‌اوت نباشد).</p>
-                        </td>
-                    </tr>
+                    <tr><th scope="row">سیستم لاگین (OTP)</th><td><label class="switch-label"><input type="checkbox" name="hub_auth_active" value="1" <?php checked($settings['active']); ?>> فعال‌سازی سیستم ورود با شماره موبایل</label></td></tr>
+                    <tr><th scope="row">یکپارچه‌سازی ووکامرس</th><td><label class="switch-label"><input type="checkbox" name="hub_auth_unified" value="1" <?php checked($settings['unified_login']); ?>> جایگزینی فرم‌های پیش‌فرض ووکامرس</label></td></tr>
+                    <tr><th scope="row">محدودیت زمانی (Rate Limit)</th><td><input type="number" name="hub_auth_rate_limit" value="<?php echo esc_attr($settings['rate_limit']); ?>" class="small-text"> ثانیه</td></tr>
+                    <tr><th scope="row">هدایت پیش‌فرض</th><td><input type="url" name="hub_auth_redirect" value="<?php echo esc_attr($settings['redirect_url']); ?>" class="regular-text" placeholder="https://..."></td></tr>
                 </table>
             </div>
         </div>
         <?php
     }
 
-    // (کدهای رندر repeater مثل قبل)
-    private static function render_webhook_row($index, $data = [], $is_template = false) {
-        $type = $data['type'] ?? 'webhook';
+    // --- TAB 3: CAMPAIGNS ---
+    private static function render_campaigns_tab() {
+        $rules = get_option('hub_rules', []); 
+        $webhooks = get_option('hub_webhooks', []); 
+        $wc_statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
         ?>
-        <div class="repeater-row webhook-row">
-            <div class="row-fields">
-                <div style="flex:1"><input type="text" name="webhooks[<?php echo $index; ?>][name]" value="<?php echo esc_attr($data['name']??''); ?>" placeholder="نام" class="input-name full-width"></div>
-                <div style="flex:1"><select name="webhooks[<?php echo $index; ?>][type]" class="input-type full-width"><option value="webhook" <?php selected($type, 'webhook'); ?>>🌐 n8n Webhook</option><option value="telegram" <?php selected($type, 'telegram'); ?>>✈️ Telegram</option><option value="melipayamak" <?php selected($type, 'melipayamak'); ?>>📩 ملی پیامک</option></select></div>
-                <div class="dynamic-fields" style="flex:2">
-                    <div class="field-group field-webhook field-telegram" style="<?php echo ($type=='melipayamak')?'display:none':''; ?>"><input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="URL / Token" class="input-url full-width"></div>
-                    <div class="field-group field-melipayamak" style="<?php echo ($type!='melipayamak')?'display:none':''; ?>; display:flex; gap:5px;"><input type="text" name="webhooks[<?php echo $index; ?>][sms_user]" value="<?php echo esc_attr($data['sms_user']??''); ?>" placeholder="کاربری" style="width:33%"><input type="text" name="webhooks[<?php echo $index; ?>][sms_pass]" value="<?php echo esc_attr($data['sms_pass']??''); ?>" placeholder="رمز" style="width:33%"><input type="text" name="webhooks[<?php echo $index; ?>][sms_from]" value="<?php echo esc_attr($data['sms_from']??''); ?>" placeholder="شماره" style="width:33%"></div>
-                </div>
-                <div style="width:30px;"><span class="dashicons dashicons-trash remove-row"></span></div>
+        <div class="hub-card">
+            <div class="hub-card-header">
+                <h3>سناریوهای فعال</h3>
+                <button type="button" class="button button-primary" id="add-rule">+ سناریوی جدید</button>
+            </div>
+            <div class="hub-card-body" id="rules-container">
+                <?php if(empty($rules)): ?><p class="no-data-msg">هنوز هیچ سناریویی تعریف نکرده‌اید.</p><?php else: foreach($rules as $i => $rule) self::render_rule_row($i, $rule, $webhooks, $wc_statuses); endif; ?>
             </div>
         </div>
+        <div id="rule-template" style="display:none;"><?php self::render_rule_row('INDEX', [], $webhooks, $wc_statuses, true); ?></div>
         <?php
     }
 
-    // (تب‌های دیگر مثل قبل...)
-    private static function render_campaigns_tab() {
-        $rules = get_option('hub_rules', []); $webhooks = get_option('hub_webhooks', []); $wc_statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
-        echo '<div class="hub-card"><div class="hub-card-header"><h3>سناریوها</h3><button type="button" class="button button-primary" id="add-rule">+ جدید</button></div><div class="hub-card-body" id="rules-container">';
-        if(empty($rules)) echo '<p class="no-data-msg">خالی</p>'; else foreach($rules as $i=>$r) self::render_rule_row($i,$r,$webhooks,$wc_statuses);
-        echo '</div></div><template id="rule-template">'; self::render_rule_row('INDEX',[],$webhooks,$wc_statuses,true); echo '</template>';
-    }
-
     private static function render_rule_row($index, $data, $webhooks, $wc_statuses, $is_template = false) {
-        // (همان کد قبلی رندر سناریو - برای خلاصه شدن اینجا کپی نکردم ولی شما کامل بگذارید)
         $active_n8n = !empty($data['active_n8n']); $active_sms = !empty($data['active_sms']); $active_tg = !empty($data['active_tg']); $trigger = $data['trigger'] ?? '';
+        $rule_name = !empty($data['name']) ? $data['name'] : ($is_template ? 'سناریوی جدید' : 'سناریو #' . ($index+1));
+        
         $vars_html = '<div class="var-list">';
         if($trigger === 'auth_request') { $vars_html .= '<span class="var-tag" data-insert="{otp}">{otp}</span><span class="var-tag" data-insert="{phone}">{phone}</span>'; } 
         else { $vars_html .= '<span class="var-tag" data-insert="{full_name}">{full_name}</span><span class="var-tag" data-insert="{order_id}">{order_id}</span><span class="var-tag" data-insert="{total}">{total}</span>'; }
         $vars_html .= '</div>';
         ?>
-        <div class="repeater-row rule-row <?php echo $is_template ? 'open' : ''; ?>"><div class="rule-header"><span class="rule-title">سناریو #<?php echo $is_template?'جدید':$index+1; ?></span><span class="dashicons dashicons-trash remove-row"></span></div>
-        <div class="rule-body">
-            <div class="rule-section"><label>شرط اجرا</label><div class="flex-row"><select name="rules[<?php echo $index; ?>][trigger]" class="trigger-select full-width"><optgroup label="فروشگاه"><option value="order_status" <?php selected($trigger,'order_status'); ?>>وضعیت سفارش</option><option value="order_created" <?php selected($trigger,'order_created'); ?>>سفارش جدید</option></optgroup><optgroup label="کاربران"><option value="auth_request" <?php selected($trigger,'auth_request'); ?>>🔐 درخواست OTP</option><option value="user_register" <?php selected($trigger,'user_register'); ?>>ثبت‌نام موفق</option></optgroup></select><select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select full-width"><option value="">-- وضعیت --</option><?php foreach($wc_statuses as $k=>$v) echo "<option value='$k' ".selected($data['sub_trigger']??'', $k, false).">$v</option>"; ?></select></div></div>
-            <div class="rule-section actions-grid">
-                <div class="action-col <?php echo $active_n8n?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_n8n]" value="1" <?php checked($active_n8n); ?> class="toggle-action"> n8n</label><div class="action-body"><select name="rules[<?php echo $index; ?>][webhook_id]" class="full-width"><option value="">انتخاب...</option><?php foreach($webhooks as $wh) if($wh['type']=='webhook') echo "<option value='{$wh['id']}' ".selected($data['webhook_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><textarea name="rules[<?php echo $index; ?>][message_n8n]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_n8n']??''); ?></textarea><?php echo $vars_html; ?></div></div>
-                <div class="action-col <?php echo $active_sms?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_sms]" value="1" <?php checked($active_sms); ?> class="toggle-action"> پیامک</label><div class="action-body"><select name="rules[<?php echo $index; ?>][sms_provider_id]" class="full-width"><option value="">انتخاب پنل...</option><?php foreach($webhooks as $wh) if($wh['type']=='melipayamak') echo "<option value='{$wh['id']}' ".selected($data['sms_provider_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><select name="rules[<?php echo $index; ?>][sms_target]" class="sms-target-select full-width"><option value="customer" <?php selected($data['sms_target']??'','customer'); ?>>مشتری</option><option value="custom" <?php selected($data['sms_target']??'','custom'); ?>>مدیر</option></select><input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="sms-custom-input full-width" style="margin-bottom:5px;"><textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" class="msg-input"><?php echo esc_textarea($data['message_sms']??''); ?></textarea><?php echo $vars_html; ?></div></div>
-                <div class="action-col <?php echo $active_tg?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_tg]" value="1" <?php checked($active_tg); ?> class="toggle-action"> تلگرام</label><div class="action-body"><select name="rules[<?php echo $index; ?>][tg_bot_id]" class="full-width"><option value="">انتخاب ربات...</option><?php foreach($webhooks as $wh) if($wh['type']=='telegram') echo "<option value='{$wh['id']}' ".selected($data['tg_bot_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><input type="text" name="rules[<?php echo $index; ?>][tg_chat_id]" value="<?php echo esc_attr($data['tg_chat_id']??''); ?>" class="full-width" placeholder="Chat ID"><textarea name="rules[<?php echo $index; ?>][message_tg]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_tg']??''); ?></textarea><?php echo $vars_html; ?></div></div>
+        <div class="repeater-row rule-row <?php echo $is_template ? 'open' : ''; ?>">
+            <div class="rule-header">
+                <span class="rule-title">
+                    <span class="dashicons dashicons-flow-line"></span> 
+                    <span class="rule-name-display"><?php echo esc_html($rule_name); ?></span>
+                </span>
+                <div class="rule-actions">
+                    <span class="dashicons dashicons-arrow-down-alt2 rule-toggle-icon"></span>
+                    <span class="dashicons dashicons-trash remove-row" title="حذف"></span>
+                </div>
             </div>
-        </div></div>
+            
+            <div class="rule-body">
+                <div class="rule-section" style="border-bottom:1px solid #eee; padding-bottom:15px; margin-bottom:15px;">
+                    <label>نام سناریو (اختیاری)</label>
+                    <input type="text" name="rules[<?php echo $index; ?>][name]" value="<?php echo esc_attr($data['name']??''); ?>" class="rule-name-input full-width" placeholder="مثلاً: پیامک ثبت سفارش مدیر">
+                </div>
+
+                <div class="rule-section">
+                    <label>۱. شرط اجرا</label>
+                    <div class="flex-row">
+                        <select name="rules[<?php echo $index; ?>][trigger]" class="trigger-select full-width">
+                            <optgroup label="فروشگاه">
+                                <option value="order_status" <?php selected($trigger,'order_status'); ?>>تغییر وضعیت سفارش</option>
+                                <option value="order_created" <?php selected($trigger,'order_created'); ?>>ثبت سفارش جدید</option>
+                            </optgroup>
+                            <optgroup label="کاربران">
+                                <option value="auth_request" <?php selected($trigger,'auth_request'); ?>>🔐 درخواست OTP</option>
+                                <option value="user_register" <?php selected($trigger,'user_register'); ?>>ثبت‌نام موفق</option>
+                            </optgroup>
+                        </select>
+                        <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select full-width"><option value="">-- انتخاب وضعیت --</option><?php foreach($wc_statuses as $k=>$v) echo "<option value='$k' ".selected($data['sub_trigger']??'', $k, false).">$v</option>"; ?></select>
+                    </div>
+                </div>
+
+                <div class="rule-section actions-grid">
+                    <div class="action-col <?php echo $active_n8n?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_n8n]" value="1" <?php checked($active_n8n); ?> class="toggle-action"> n8n</label><div class="action-body"><select name="rules[<?php echo $index; ?>][webhook_id]" class="full-width"><option value="">انتخاب...</option><?php foreach($webhooks as $wh) if($wh['type']=='webhook') echo "<option value='{$wh['id']}' ".selected($data['webhook_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><textarea name="rules[<?php echo $index; ?>][message_n8n]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_n8n']??''); ?></textarea><?php echo $vars_html; ?></div></div>
+                    <div class="action-col <?php echo $active_sms?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_sms]" value="1" <?php checked($active_sms); ?> class="toggle-action"> پیامک</label><div class="action-body"><select name="rules[<?php echo $index; ?>][sms_provider_id]" class="full-width"><option value="">انتخاب پنل...</option><?php foreach($webhooks as $wh) if($wh['type']=='melipayamak') echo "<option value='{$wh['id']}' ".selected($data['sms_provider_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><select name="rules[<?php echo $index; ?>][sms_target]" class="sms-target-select full-width"><option value="customer" <?php selected($data['sms_target']??'','customer'); ?>>مشتری</option><option value="custom" <?php selected($data['sms_target']??'','custom'); ?>>مدیر</option></select><input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="sms-custom-input full-width" style="margin-bottom:5px;"><textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" class="msg-input"><?php echo esc_textarea($data['message_sms']??''); ?></textarea><?php echo $vars_html; ?></div></div>
+                    <div class="action-col <?php echo $active_tg?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_tg]" value="1" <?php checked($active_tg); ?> class="toggle-action"> تلگرام</label><div class="action-body"><select name="rules[<?php echo $index; ?>][tg_bot_id]" class="full-width"><option value="">انتخاب ربات...</option><?php foreach($webhooks as $wh) if($wh['type']=='telegram') echo "<option value='{$wh['id']}' ".selected($data['tg_bot_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><input type="text" name="rules[<?php echo $index; ?>][tg_chat_id]" value="<?php echo esc_attr($data['tg_chat_id']??''); ?>" class="full-width" placeholder="Chat ID"><textarea name="rules[<?php echo $index; ?>][message_tg]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_tg']??''); ?></textarea><?php echo $vars_html; ?></div></div>
+                </div>
+            </div>
+        </div>
         <?php
     }
-    private static function render_logs_tab() { /* کد قبلی */ global $wpdb; $table = $wpdb->prefix . 'hub_logs'; $logs = $wpdb->get_results( "SELECT * FROM $table ORDER BY id DESC LIMIT 50" ); ?><div class="hub-card"><h3>📜 لاگ‌ها</h3><table class="wp-list-table widefat fixed striped"><thead><tr><th>زمان</th><th>نوع</th><th>منبع</th><th>پیام</th></tr></thead><tbody><?php if($logs): foreach($logs as $log): ?><tr><td dir="ltr"><?php echo $log->created_at; ?></td><td><?php echo $log->log_type; ?></td><td><?php echo $log->source; ?></td><td><?php echo esc_html($log->message); ?></td></tr><?php endforeach; endif; ?></tbody></table></div><?php }
+    
+    private static function render_logs_tab() { global $wpdb; $table = $wpdb->prefix . 'hub_logs'; $logs = $wpdb->get_results( "SELECT * FROM $table ORDER BY id DESC LIMIT 50" ); ?><div class="hub-card"><h3>📜 لاگ‌ها</h3><table class="wp-list-table widefat fixed striped"><thead><tr><th>زمان</th><th>نوع</th><th>منبع</th><th>پیام</th></tr></thead><tbody><?php if($logs): foreach($logs as $log): ?><tr><td dir="ltr"><?php echo $log->created_at; ?></td><td><?php echo $log->log_type; ?></td><td><?php echo $log->source; ?></td><td><?php echo esc_html($log->message); ?></td></tr><?php endforeach; endif; ?></tbody></table></div><?php }
 }
