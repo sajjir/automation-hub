@@ -6,24 +6,18 @@ class Hub_Bridge {
 		add_action( 'woocommerce_order_status_changed', array( __CLASS__, 'handle_order_status' ), 10, 4 );
 		add_action( 'woocommerce_new_order', array( __CLASS__, 'handle_new_order' ), 10, 1 );
 		add_action( 'user_register', array( __CLASS__, 'handle_user_register' ), 10, 1 );
-        
-        // --- هوک جدید برای لاگین ---
         add_action( 'hub_auth_request', array( __CLASS__, 'handle_auth_request' ), 10, 2 );
 	}
 
-    // --- هندلرهای رویداد ---
 	public static function handle_order_status( $order_id, $from, $to, $order ) { self::process_rules( 'order_status', $order, 'wc-' . $to ); }
 	public static function handle_new_order( $order_id ) { $order = wc_get_order( $order_id ); self::process_rules( 'order_created', $order ); }
 	public static function handle_user_register( $user_id ) { $user = get_userdata( $user_id ); self::process_rules( 'user_register', $user ); }
     
-    // هندلر جدید: وقتی کسی کد OTP خواست
     public static function handle_auth_request( $phone, $otp ) {
-        // ساخت یک شیء ساختگی برای ارسال به پارسر
         $data = (object) [ 'phone' => $phone, 'otp' => $otp ];
         self::process_rules( 'auth_request', $data );
     }
 
-	// --- هسته پردازش ---
 	private static function process_rules( $trigger_type, $entity, $sub_trigger = null ) {
 		$rules = get_option( 'hub_rules', [] );
 		$webhooks = get_option( 'hub_webhooks', [] );
@@ -33,34 +27,63 @@ class Hub_Bridge {
 			if ( $rule['trigger'] !== $trigger_type ) continue;
 			if ( $trigger_type === 'order_status' && !empty($rule['sub_trigger']) && $rule['sub_trigger'] !== $sub_trigger ) continue;
 
-            $msg_n8n = self::parse_shortcodes( $rule['message_n8n'] ?? '', $entity );
-            $msg_sms = !empty($rule['active_sms']) ? self::parse_shortcodes( $rule['message_sms'] ?? '', $entity ) : '';
-            $msg_tg  = !empty($rule['active_tg']) ? self::parse_shortcodes( $rule['message_tg'] ?? '', $entity ) : '';
+            // 1. ترجمه پیام‌ها (CRITICAL FIX: ترجمه قبل از استفاده)
+            // نکته: تابع parse_shortcodes باید تمام متغیرها را جایگزین کند
+            $msg_n8n_raw = $rule['message_n8n'] ?? '';
+            $msg_sms_raw = $rule['message_sms'] ?? '';
+            $msg_tg_raw  = $rule['message_tg'] ?? '';
 
-			// 1. n8n
-			if ( !empty($rule['active_n8n']) && !empty($rule['webhook_id']) && isset($wh_map[$rule['webhook_id']]) ) {
-				$payload = self::build_payload_n8n( $entity, $msg_n8n );
-                $payload['sms_message_preview'] = $msg_sms;
-                $payload['telegram_message_preview'] = $msg_tg;
-                $payload['scenario_execution_log'] = [
-                    'rule_trigger' => $trigger_type,
-                    'sms_action' => ['active'=>!empty($rule['active_sms']), 'message'=>$msg_sms],
-                    'telegram_action' => ['active'=>!empty($rule['active_tg']), 'message'=>$msg_tg]
+            $msg_n8n_processed = self::parse_shortcodes( $msg_n8n_raw, $entity );
+            $msg_sms_processed = !empty($rule['active_sms']) ? self::parse_shortcodes( $msg_sms_raw, $entity ) : '';
+            $msg_tg_processed  = !empty($rule['active_tg']) ? self::parse_shortcodes( $msg_tg_raw, $entity ) : '';
+
+			// 2. آماده‌سازی دیتای تلگرام (برای لاگ)
+            $tg_log_data = [ 'active' => false, 'message' => '' ];
+            if ( !empty($rule['active_tg']) && !empty($rule['tg_bot_id']) && isset($wh_map[$rule['tg_bot_id']]) ) {
+                $tg_log_data = [
+                    'active' => true,
+                    'bot_name' => $wh_map[$rule['tg_bot_id']]['name'],
+                    'chat_id' => $rule['tg_chat_id'] ?? '',
+                    'message' => $msg_tg_processed // استفاده از پیام ترجمه شده
                 ];
+            }
+
+            // 3. آماده‌سازی دیتای پیامک (برای لاگ)
+            $sms_log_data = [ 'active' => false, 'message' => '' ];
+            if ( !empty($rule['active_sms']) ) {
+                $sms_log_data = [ 
+                    'active' => true, 
+                    'message' => $msg_sms_processed // استفاده از پیام ترجمه شده
+                ];
+            }
+
+			// --- ارسال به n8n ---
+			if ( !empty($rule['active_n8n']) && !empty($rule['webhook_id']) && isset($wh_map[$rule['webhook_id']]) ) {
+				// ساخت پیلود با پیام ترجمه شده
+                $payload = self::build_payload_n8n( $entity, $msg_n8n_processed );
+                
+                // تزریق پیش‌نمایش‌ها (ترجمه شده)
+                $payload['sms_message_preview'] = $msg_sms_processed;
+                $payload['telegram_message_preview'] = $msg_tg_processed;
+                
+                // لاگ کامل اجرا
+                $payload['scenario_execution_log'] = [
+                    'rule_name' => $rule['name'] ?? 'Unnamed Scenario',
+                    'rule_trigger' => $trigger_type,
+                    'sms_action' => $sms_log_data,
+                    'telegram_action' => $tg_log_data
+                ];
+
 				$payload['_webhook_url'] = $wh_map[$rule['webhook_id']]['url'];
 				Hub_Queue::push( 'n8n.send', $payload );
 			}
 
-			// 2. SMS (مخصوص Auth: گیرنده همیشه شماره موبایل درخواست کننده است)
-			if ( !empty($rule['active_sms']) && !empty($msg_sms) && !empty($rule['sms_provider_id']) ) {
+			// --- ارسال پیامک ---
+			if ( !empty($rule['active_sms']) && !empty($msg_sms_processed) && !empty($rule['sms_provider_id']) ) {
                 $target_num = '';
-                
-                // در حالت Auth، شماره گیرنده همان شماره‌ای است که کاربر وارد کرده
                 if ( $trigger_type === 'auth_request' && isset($entity->phone) ) {
                     $target_num = $entity->phone;
-                } 
-                // در حالت‌های دیگر (سفارش و...)
-                else {
+                } else {
                     if ( ($rule['sms_target'] ?? 'customer') === 'customer' ) {
                         if ( is_a($entity, 'WC_Order') ) $target_num = $entity->get_billing_phone();
                         elseif ( is_a($entity, 'WP_User') ) $target_num = get_user_meta($entity->ID, 'billing_phone', true);
@@ -74,18 +97,25 @@ class Hub_Bridge {
                 if ( !empty($target_num) && isset($wh_map[$rule['sms_provider_id']]) ) {
                     $provider = $wh_map[$rule['sms_provider_id']];
                     Hub_Queue::push( 'sms.send', [ 
-                        'mobile' => $target_num, 'message' => $msg_sms,
-                        'user' => $provider['sms_user'], 'pass' => $provider['sms_pass'], 'from' => $provider['sms_from']
+                        'mobile' => $target_num, 
+                        'message' => $msg_sms_processed, // پیام ترجمه شده
+                        'user' => $provider['sms_user'], 
+                        'pass' => $provider['sms_pass'], 
+                        'from' => $provider['sms_from']
                     ]);
                 }
 			}
 
-            // 3. Telegram
-            if ( !empty($rule['active_tg']) && !empty($rule['tg_bot_id']) && isset($wh_map[$rule['tg_bot_id']]) && !empty($msg_tg) ) {
-                $bot_token = $wh_map[$rule['tg_bot_id']]['url']; 
+            // --- ارسال تلگرام ---
+            if ( $tg_log_data['active'] && !empty($tg_log_data['message']) ) {
+                $bot_token = $wh_map[$rule['tg_bot_id']]['url'];
                 $chat_id = $rule['tg_chat_id'] ?? '';
                 if ( !empty($chat_id) ) {
-                    Hub_Queue::push( 'telegram.send', [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg ] );
+                    Hub_Queue::push( 'telegram.send', [ 
+                        'token' => $bot_token, 
+                        'chat_id' => $chat_id, 
+                        'message' => $msg_tg_processed // پیام ترجمه شده
+                    ]);
                 }
             }
 		}
@@ -93,11 +123,16 @@ class Hub_Bridge {
 
 	private static function build_payload_n8n( $entity, $processed_msg ) {
         $data = [];
-        // پشتیبانی از آبجکت Auth
         if ( isset($entity->otp) ) {
             $data = [ 'event' => 'auth_request', 'phone' => $entity->phone, 'otp' => $entity->otp ];
         } elseif ( is_a( $entity, 'WC_Order' ) ) {
-            $data = [ 'id' => $entity->get_id(), 'total' => $entity->get_total(), 'status' => $entity->get_status(), 'billing' => $entity->get_address('billing') ];
+            $data = [ 
+                'id' => $entity->get_id(), 
+                'total' => $entity->get_total(), 
+                'status' => $entity->get_status(), 
+                'billing' => $entity->get_address('billing'),
+                'shipping' => $entity->get_address('shipping')
+            ];
             foreach($entity->get_items() as $item) $data['items'][] = [ 'name' => $item->get_name(), 'qty' => $item->get_quantity(), 'total' => $item->get_total() ];
         } elseif ( is_a( $entity, 'WP_User' ) ) {
             $data = [ 'id' => $entity->ID, 'email' => $entity->user_email ];
@@ -108,44 +143,70 @@ class Hub_Bridge {
     private static function normalize_number($number) {
         if(empty($number)) return '';
         $number = preg_replace('/[^0-9]/', '', $number);
-        // اگر پترن شروع با @ باشد، نیازی به تبدیل نیست (چون پترن است)
-        // اما اگر شماره است:
         $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
         $english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-        return str_replace($persian, $english, $number);
+        $number = str_replace($persian, $english, $number);
+        return $number;
     }
 
     private static function parse_shortcodes($text, $entity) {
         if (empty($text)) return '';
         
-        // --- 1. اگر مربوط به OTP است ---
+        // 1. Auth
         if ( isset($entity->otp) ) {
-            $vars = [
-                '{otp}' => $entity->otp,
-                '{phone}' => $entity->phone,
-            ];
-            return str_replace(array_keys($vars), array_values($vars), $text);
+            return str_replace(['{otp}', '{phone}'], [$entity->otp, $entity->phone], $text);
         }
 
-        // --- 2. اگر مربوط به سفارش است ---
+        // 2. WC Order
         if ( is_a( $entity, 'WC_Order' ) ) {
             $order = $entity;
             $clean_price = function($html_price) { return trim(strip_tags(html_entity_decode($html_price))); };
-            $fname = $order->get_billing_first_name();
-            $lname = $order->get_billing_last_name();
+            $date_created = $order->get_date_created();
 
+            // ساخت متغیرها
             $vars = [
                 '{order_id}' => $order->get_id(),
                 '{status}' => wc_get_order_status_name($order->get_status()),
-                '{full_name}' => $fname . ' ' . $lname,
-                '{first_name}' => $fname,
-                '{b_first_name}' => $fname,
+                '{date}' => $date_created ? $date_created->date_i18n('Y/m/d') : '',
+                '{time}' => $date_created ? $date_created->date_i18n('H:i') : '',
+                '{full_name}' => $order->get_billing_first_name() . ' ' . $order->get_billing_last_name(),
                 '{phone}' => $order->get_billing_phone(),
+                '{address}' => $order->get_billing_address_1() . ' ' . $order->get_billing_city(),
+                '{customer_note}' => $order->get_customer_note(),
+                '{shipping_method}' => $order->get_shipping_method(),
+                '{shipping_cost}' => $clean_price(wc_price($order->get_shipping_total())),
                 '{total}' => $clean_price(wc_price($order->get_total())),
             ];
-            // ... (بقیه کدهای اسکرپر قبلی را اینجا بگذارید) ...
-            if (strpos($text, '{_scrape_raw_result_}') !== false) { /* ... کد اسکرپر ... */ }
 
+            // آیتم‌های دقیق (مهم: این بخش باید قبل از جایگزینی کلی اجرا شود)
+            if (strpos($text, '{items_detailed}') !== false) {
+                $lines = [];
+                foreach ($order->get_items() as $item) {
+                    $lines[] = "- " . $item->get_name() . " (×" . $item->get_quantity() . ")";
+                }
+                $vars['{items_detailed}'] = implode("\n", $lines);
+            }
+
+            // اسکرپر (قیمت خرید)
+            if (strpos($text, '{_scrape_raw_result_}') !== false) {
+                $scrape_list = "";
+                foreach ($order->get_items() as $item) {
+                    $product = $item->get_product();
+                    if ($product) {
+                        $pid = $product->is_type('variation') ? $product->get_parent_id() : $product->get_id();
+                        $raw = get_post_meta($pid, '_last_scrape_raw_result', true);
+                        if($raw) {
+                            $decoded = json_decode($raw, true);
+                            // تلاش برای پیدا کردن قیمت در ساختارهای مختلف
+                            $price = $decoded['price'] ?? $decoded[0]['price'] ?? $decoded['amount'] ?? null;
+                            if($price) $scrape_list .= "📦 " . $product->get_name() . " -> خرید: " . number_format((float)$price) . "\n";
+                        }
+                    }
+                }
+                $vars['{_scrape_raw_result_}'] = $scrape_list ?: '---';
+            }
+
+            // جایگزینی نهایی
             return str_replace(array_keys($vars), array_values($vars), $text);
         }
         return $text;
