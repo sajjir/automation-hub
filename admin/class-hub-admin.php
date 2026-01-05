@@ -77,11 +77,11 @@ class Hub_Admin {
             update_option('hub_webhooks', $clean);
         }
 
-        // 2. سناریوها (ذخیره نام سناریو اضافه شد)
+        // 2. سناریوها
         if(isset($_POST['rules'])) {
             $clean_rules = [];
             foreach($_POST['rules'] as $rule) {
-                $rule['name'] = sanitize_text_field($rule['name'] ?? ''); // نام سناریو
+                $rule['name'] = sanitize_text_field($rule['name'] ?? ''); 
                 $rule['message_n8n'] = wp_kses_post($rule['message_n8n'] ?? '');
                 $rule['message_sms'] = sanitize_textarea_field($rule['message_sms'] ?? '');
                 $rule['message_tg'] = wp_kses_post($rule['message_tg'] ?? '');
@@ -90,8 +90,9 @@ class Hub_Admin {
             update_option('hub_rules', $clean_rules);
         }
 
-        // 3. تنظیمات سیستم
-        if(isset($_POST['hub_auth_active'])) {
+        // 3. تنظیمات سیستم (اصلاح باگ ذخیره نشدن)
+        // به جای چک کردن چک‌باکس (که اگر تیک نخورد ارسال نمی‌شود)، فیلد متنی rate_limit را چک می‌کنیم که همیشه هست.
+        if(isset($_POST['hub_auth_rate_limit'])) {
             $auth_settings = [
                 'active' => isset($_POST['hub_auth_active']) ? 1 : 0,
                 'unified_login' => isset($_POST['hub_auth_unified']) ? 1 : 0,
@@ -147,7 +148,6 @@ class Hub_Admin {
 
     private static function render_webhook_row($index, $data = [], $is_template = false) {
         $type = $data['type'] ?? 'webhook';
-        // کلاس‌های CSS دقیق برای JS
         ?>
         <div class="repeater-row webhook-row">
             <div class="row-fields">
