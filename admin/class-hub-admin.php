@@ -58,10 +58,11 @@ class Hub_Admin {
 	}
 
     private static function save_settings() {
-        // 1. اتصالات
+        // 1. اتصالات (پاکسازی قالب خالی)
         if(isset($_POST['webhooks'])) {
             $clean = [];
-            foreach($_POST['webhooks'] as $wh) {
+            foreach($_POST['webhooks'] as $index => $wh) {
+                if($index === 'INDEX') continue; // نادیده گرفتن قالب JS
                 if(!empty($wh['name'])) {
                     $clean[] = [
                         'id' => sanitize_title($wh['name']),
@@ -77,10 +78,14 @@ class Hub_Admin {
             update_option('hub_webhooks', $clean);
         }
 
-        // 2. سناریوها
+        // 2. سناریوها (FIX: جلوگیری از ذخیره سناریوهای خالی)
         if(isset($_POST['rules'])) {
             $clean_rules = [];
-            foreach($_POST['rules'] as $rule) {
+            foreach($_POST['rules'] as $index => $rule) {
+                // اگر ایندکس INDEX باشد یا تریگر خالی باشد، ذخیره نکن
+                if($index === 'INDEX') continue;
+                if(empty($rule['trigger'])) continue;
+
                 $rule['name'] = sanitize_text_field($rule['name'] ?? ''); 
                 $rule['message_n8n'] = wp_kses_post($rule['message_n8n'] ?? '');
                 $rule['message_sms'] = sanitize_textarea_field($rule['message_sms'] ?? '');
@@ -90,8 +95,7 @@ class Hub_Admin {
             update_option('hub_rules', $clean_rules);
         }
 
-        // 3. تنظیمات سیستم (اصلاح باگ ذخیره نشدن)
-        // به جای چک کردن چک‌باکس (که اگر تیک نخورد ارسال نمی‌شود)، فیلد متنی rate_limit را چک می‌کنیم که همیشه هست.
+        // 3. تنظیمات سیستم
         if(isset($_POST['hub_auth_rate_limit'])) {
             $auth_settings = [
                 'active' => isset($_POST['hub_auth_active']) ? 1 : 0,

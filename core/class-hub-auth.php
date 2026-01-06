@@ -5,7 +5,6 @@ class Hub_Auth {
 	public static function init() {
 		add_shortcode( 'hub_login_form', array( __CLASS__, 'render_login_form' ) );
 
-		// هندلرهای AJAX
 		add_action( 'wp_ajax_hub_send_otp', array( __CLASS__, 'handle_send_otp' ) );
 		add_action( 'wp_ajax_nopriv_hub_send_otp', array( __CLASS__, 'handle_send_otp' ) );
 
@@ -14,17 +13,11 @@ class Hub_Auth {
         
         add_action( 'wp_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
 
-        // بررسی تنظیمات یکپارچه‌سازی
         $settings = get_option('hub_auth_settings');
         if ( !empty($settings['active']) ) {
-            
-            // 1. مدیریت صفحه "حساب کاربری من" (My Account)
             if ( !empty($settings['unified_login']) ) {
-                // این هوک قبل از فرم‌های لاگین/ثبت‌نام اجرا می‌شود (بیرون از فرم)
                 add_action( 'woocommerce_before_customer_login_form', array( __CLASS__, 'render_my_account_login' ) );
             }
-
-            // 2. مدیریت صفحه "تسویه حساب" (Checkout)
             add_action( 'woocommerce_before_checkout_form', array( __CLASS__, 'manage_checkout_auth' ), 5 );
         }
 	}
@@ -36,39 +29,24 @@ class Hub_Auth {
         wp_localize_script( 'hub-auth-js', 'hubAuth', array(
             'ajax_url' => admin_url( 'admin-ajax.php' ),
             'nonce'    => wp_create_nonce( 'hub_auth_nonce' ),
-            'timer_limit' => 120 // ثانیه
+            'timer_limit' => 120
         ));
     }
 
-    // --- متد جدید برای My Account ---
     public static function render_my_account_login() {
         if ( is_user_logged_in() ) return;
-
         echo '<div class="hub-myaccount-overlay">';
         echo do_shortcode('[hub_login_form]'); 
         echo '</div>';
-
-        // مخفی‌سازی هوشمند فرم‌های قالب (تمام کلاس‌های رایج)
-        echo '<style>
-            #customer_login,              /* استاندارد ووکامرس */
-            .u-columns.col2-set,          /* گرید استاندارد */
-            .woocommerce-form-login,      /* فرم لاگین تکی */
-            .woocommerce-form-register,   /* فرم ثبت‌نام تکی */
-            .col-1, .col-2,               /* ستون‌های قالب‌های قدیمی */
-            .account-login-inner          /* برخی قالب‌های مدرن */
-            { display: none !important; }
-        </style>';
+        echo '<style>#customer_login, .u-columns.col2-set, .woocommerce-form-login, .woocommerce-form-register, .col-1, .col-2, .account-login-inner { display: none !important; }</style>';
     }
 
-    // --- مدیریت Checkout (مثل قبل) ---
     public static function manage_checkout_auth() {
         if ( is_user_logged_in() ) return;
-
         echo '<div class="hub-checkout-overlay">';
         echo '<h3>ورود / ثبت‌نام جهت تکمیل خرید</h3>';
         echo do_shortcode('[hub_login_form redirect="current"]'); 
         echo '</div>';
-
         echo '<style>form.checkout.woocommerce-checkout, .woocommerce-info, .woocommerce-form-login-toggle { display: none !important; }</style>';
     }
 
@@ -80,7 +58,6 @@ class Hub_Auth {
 
         $atts = shortcode_atts( array( 'redirect' => '' ), $atts );
         $redirect_url = $atts['redirect'];
-        
         if ( $redirect_url === 'current' ) {
             global $wp;
             $redirect_url = home_url( add_query_arg( array(), $wp->request ) );
@@ -93,7 +70,6 @@ class Hub_Auth {
 		?>
 		<div class="hub-auth-wrapper">
             <input type="hidden" id="hub-redirect-to" value="<?php echo esc_url($redirect_url); ?>">
-
 			<div id="hub-step-phone" class="hub-step active">
 				<p class="hub-title">ورود با شماره موبایل</p>
 				<div class="hub-input-row">
@@ -101,36 +77,34 @@ class Hub_Auth {
                 </div>
                 <button type="button" id="hub-btn-send" class="hub-btn">ارسال کد تایید</button>
 			</div>
-
 			<div id="hub-step-verify" class="hub-step" style="display:none;">
                 <p class="hub-subtitle">کد تایید به <span id="hub-phone-display"></span> ارسال شد</p>
-				
                 <div class="hub-otp-row">
                     <input type="text" id="hub-otp" placeholder="- - - -" maxlength="4" autocomplete="one-time-code" inputmode="numeric">
                 </div>
-                
                 <div class="hub-timer-row">
                     <span id="hub-timer">02:00</span>
                     <a href="#" id="hub-btn-resend" class="hub-link-btn disabled">ارسال مجدد کد</a>
                 </div>
-                
                 <div class="hub-footer-row">
 				    <button type="button" id="hub-btn-verify" class="hub-btn">ورود به سیستم</button>
                     <a href="#" id="hub-btn-edit" class="hub-link-back">اصلاح شماره</a>
                 </div>
 			</div>
-            
             <div id="hub-message" class="hub-message"></div>
 		</div>
 		<?php
 		return ob_get_clean();
 	}
 
-    // --- AJAX HANDLERS ---
     public static function handle_send_otp() {
 		if ( ! check_ajax_referer( 'hub_auth_nonce', 'nonce', false ) ) wp_send_json_error( 'خطای امنیتی.' );
-        $phone = self::normalize_number( isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '' );
-        if ( ! preg_match( '/^09[0-9]{9}$/', $phone ) ) wp_send_json_error( 'شماره معتبر نیست.' );
+        
+        // اصلاح: تبدیل شماره قبل از هر کاری
+        $phone_raw = isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '';
+        $phone = self::normalize_number( $phone_raw );
+
+        if ( ! preg_match( '/^09[0-9]{9}$/', $phone ) ) wp_send_json_error( 'شماره موبایل معتبر نیست.' );
 
         $rate_limit = get_option('hub_auth_settings')['rate_limit'] ?? 120;
         $last_sent = get_transient( 'hub_otp_time_' . $phone );
@@ -150,7 +124,9 @@ class Hub_Auth {
 	public static function handle_verify_otp() {
 		if ( ! check_ajax_referer( 'hub_auth_nonce', 'nonce', false ) ) wp_send_json_error( 'خطای امنیتی.' );
 		
-        $phone = self::normalize_number( isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '' );
+        $phone_raw = isset($_POST['phone']) ? sanitize_text_field($_POST['phone']) : '';
+        $phone = self::normalize_number( $phone_raw );
+        
         $otp_user = sanitize_text_field( $_POST['otp'] );
         $client_redirect = isset($_POST['redirect_to']) ? esc_url_raw($_POST['redirect_to']) : '';
 
@@ -177,13 +153,25 @@ class Hub_Auth {
         }
 	}
 
+    // --- FIX: اصلاح منطق تبدیل شماره ---
     private static function normalize_number($number) {
-        $number = preg_replace('/[^0-9]/', '', $number);
+        if(empty($number)) return '';
+        
+        // 1. اول تبدیل اعداد فارسی/عربی به انگلیسی
         $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
+        $arabic  = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
         $english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+        
         $number = str_replace($persian, $english, $number);
+        $number = str_replace($arabic, $english, $number);
+        
+        // 2. حالا حذف غیر عددها
+        $number = preg_replace('/[^0-9]/', '', $number);
+        
+        // 3. استانداردسازی فرمت
         if (substr($number, 0, 3) === '989') $number = '0' . substr($number, 2);
         if (substr($number, 0, 1) === '9') $number = '0' . $number;
+        
         return $number;
     }
     
