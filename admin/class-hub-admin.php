@@ -5,6 +5,9 @@ class Hub_Admin {
 	public static function init() {
 		add_action( 'admin_menu', array( __CLASS__, 'add_admin_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
+        
+        // هندلر AJAX برای تست آنی
+        add_action( 'wp_ajax_hub_test_scenario', array( __CLASS__, 'handle_test_scenario' ) );
 	}
 
 	public static function add_admin_menu() {
@@ -17,6 +20,77 @@ class Hub_Admin {
 		wp_enqueue_script( 'hub-admin-js', HUB_PLUGIN_URL . 'admin/js/hub-admin.js', array( 'jquery' ), HUB_VERSION, true );
         wp_localize_script( 'hub-admin-js', 'hubData', array( 'statuses' => function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [] ) );
 	}
+
+    // --- تابع جدید: پردازش تست سناریو ---
+    public static function handle_test_scenario() {
+        if(!check_ajax_referer('hub_save_nonce', 'nonce', false) && !current_user_can('manage_options')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+
+        $type = sanitize_text_field($_POST['type']); // n8n, sms, telegram
+        $connection_id = sanitize_text_field($_POST['connection_id']);
+        $raw_message = wp_kses_post($_POST['message']); // پیام خام
+        $to_custom = sanitize_text_field($_POST['custom_target'] ?? '');
+
+        // پیدا کردن اطلاعات اتصال
+        $webhooks = get_option('hub_webhooks', []);
+        $connection = null;
+        foreach($webhooks as $wh) {
+            if($wh['id'] === $connection_id) { $connection = $wh; break; }
+        }
+
+        if(!$connection) wp_send_json_error('اتصال یافت نشد. لطفاً ابتدا سناریو را ذخیره کنید.');
+
+        // پیدا کردن آخرین سفارش برای تست
+        $orders = wc_get_orders(['limit' => 1, 'orderby' => 'date', 'order' => 'DESC']);
+        if(empty($orders)) wp_send_json_error('هیچ سفارشی برای تست در فروشگاه یافت نشد.');
+        
+        $order = $orders[0];
+        
+        // ترجمه پیام
+        $processed_msg = Hub_Bridge::parse_shortcodes($raw_message, $order);
+
+        // ارسال بر اساس نوع
+        if ($type === 'n8n') {
+            $payload = Hub_Bridge::build_payload_n8n($order, $processed_msg);
+            $payload['_webhook_url'] = $connection['url'];
+            // اضافه کردن فلگ تست
+            $payload['is_test_run'] = true;
+            
+            Hub_Sender::send_immediate('n8n.send', $payload);
+            wp_send_json_success('تست n8n با موفقیت ارسال شد (آنی).');
+        } 
+        elseif ($type === 'sms') {
+            // برای تست پیامک، اگر شماره دستی وارد شده باشد به آن میزنیم، وگرنه به شماره سفارش
+            $target = !empty($to_custom) ? $to_custom : $order->get_billing_phone();
+            $target = Hub_Bridge::normalize_number($target);
+            
+            if(empty($target)) wp_send_json_error('شماره موبایل معتبری یافت نشد.');
+
+            $args = [
+                'mobile' => $target,
+                'message' => $processed_msg,
+                'user' => $connection['sms_user'],
+                'pass' => $connection['sms_pass'],
+                'from' => $connection['sms_from']
+            ];
+            Hub_Sender::send_immediate('sms.send', $args);
+            wp_send_json_success("تست پیامک به شماره $target ارسال شد.");
+        }
+        elseif ($type === 'telegram') {
+            // تست تلگرام
+            $chat_id = sanitize_text_field($_POST['chat_id']);
+            if(empty($chat_id)) wp_send_json_error('چت آیدی وارد نشده است.');
+
+            $args = [
+                'token' => $connection['url'],
+                'chat_id' => $chat_id,
+                'message' => $processed_msg
+            ];
+            Hub_Sender::send_immediate('telegram.send', $args);
+            wp_send_json_success('تست تلگرام ارسال شد.');
+        }
+    }
 
 	public static function render_admin_page() {
 		$active_tab = isset( $_GET['tab'] ) ? sanitize_key( $_GET['tab'] ) : 'connections';
@@ -58,11 +132,10 @@ class Hub_Admin {
 	}
 
     private static function save_settings() {
-        // 1. اتصالات (پاکسازی قالب خالی)
         if(isset($_POST['webhooks'])) {
             $clean = [];
             foreach($_POST['webhooks'] as $index => $wh) {
-                if($index === 'INDEX') continue; // نادیده گرفتن قالب JS
+                if($index === 'INDEX') continue;
                 if(!empty($wh['name'])) {
                     $clean[] = [
                         'id' => sanitize_title($wh['name']),
@@ -78,11 +151,9 @@ class Hub_Admin {
             update_option('hub_webhooks', $clean);
         }
 
-        // 2. سناریوها (FIX: جلوگیری از ذخیره سناریوهای خالی)
         if(isset($_POST['rules'])) {
             $clean_rules = [];
             foreach($_POST['rules'] as $index => $rule) {
-                // اگر ایندکس INDEX باشد یا تریگر خالی باشد، ذخیره نکن
                 if($index === 'INDEX') continue;
                 if(empty($rule['trigger'])) continue;
 
@@ -95,7 +166,6 @@ class Hub_Admin {
             update_option('hub_rules', $clean_rules);
         }
 
-        // 3. تنظیمات سیستم
         if(isset($_POST['hub_auth_rate_limit'])) {
             $auth_settings = [
                 'active' => isset($_POST['hub_auth_active']) ? 1 : 0,
@@ -111,7 +181,6 @@ class Hub_Admin {
         if(isset($_POST['gen_key'])) Hub_Security::generate_api_key();
     }
 
-	// --- TAB 1: CONNECTIONS ---
 	private static function render_connections_tab() {
 		$webhooks = get_option('hub_webhooks', []);
         $proxy = get_option('hub_telegram_proxy', '');
@@ -182,7 +251,6 @@ class Hub_Admin {
         <?php
     }
 
-    // --- TAB 2: SETTINGS ---
     private static function render_settings_tab() {
         $defaults = ['active'=>0, 'unified_login'=>0, 'redirect_url'=>'', 'rate_limit'=>120, 'google_login'=>0];
         $settings = wp_parse_args(get_option('hub_auth_settings', []), $defaults);
@@ -201,7 +269,6 @@ class Hub_Admin {
         <?php
     }
 
-    // --- TAB 3: CAMPAIGNS ---
     private static function render_campaigns_tab() {
         $rules = get_option('hub_rules', []); 
         $webhooks = get_option('hub_webhooks', []); 
@@ -265,9 +332,38 @@ class Hub_Admin {
                 </div>
 
                 <div class="rule-section actions-grid">
-                    <div class="action-col <?php echo $active_n8n?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_n8n]" value="1" <?php checked($active_n8n); ?> class="toggle-action"> n8n</label><div class="action-body"><select name="rules[<?php echo $index; ?>][webhook_id]" class="full-width"><option value="">انتخاب...</option><?php foreach($webhooks as $wh) if($wh['type']=='webhook') echo "<option value='{$wh['id']}' ".selected($data['webhook_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><textarea name="rules[<?php echo $index; ?>][message_n8n]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_n8n']??''); ?></textarea><?php echo $vars_html; ?></div></div>
-                    <div class="action-col <?php echo $active_sms?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_sms]" value="1" <?php checked($active_sms); ?> class="toggle-action"> پیامک</label><div class="action-body"><select name="rules[<?php echo $index; ?>][sms_provider_id]" class="full-width"><option value="">انتخاب پنل...</option><?php foreach($webhooks as $wh) if($wh['type']=='melipayamak') echo "<option value='{$wh['id']}' ".selected($data['sms_provider_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><select name="rules[<?php echo $index; ?>][sms_target]" class="sms-target-select full-width"><option value="customer" <?php selected($data['sms_target']??'','customer'); ?>>مشتری</option><option value="custom" <?php selected($data['sms_target']??'','custom'); ?>>مدیر</option></select><input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="sms-custom-input full-width" style="margin-bottom:5px;"><textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" class="msg-input"><?php echo esc_textarea($data['message_sms']??''); ?></textarea><?php echo $vars_html; ?></div></div>
-                    <div class="action-col <?php echo $active_tg?'active':''; ?>"><label><input type="checkbox" name="rules[<?php echo $index; ?>][active_tg]" value="1" <?php checked($active_tg); ?> class="toggle-action"> تلگرام</label><div class="action-body"><select name="rules[<?php echo $index; ?>][tg_bot_id]" class="full-width"><option value="">انتخاب ربات...</option><?php foreach($webhooks as $wh) if($wh['type']=='telegram') echo "<option value='{$wh['id']}' ".selected($data['tg_bot_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select><input type="text" name="rules[<?php echo $index; ?>][tg_chat_id]" value="<?php echo esc_attr($data['tg_chat_id']??''); ?>" class="full-width" placeholder="Chat ID"><textarea name="rules[<?php echo $index; ?>][message_tg]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_tg']??''); ?></textarea><?php echo $vars_html; ?></div></div>
+                    <div class="action-col <?php echo $active_n8n?'active':''; ?>">
+                        <label><input type="checkbox" name="rules[<?php echo $index; ?>][active_n8n]" value="1" <?php checked($active_n8n); ?> class="toggle-action"> n8n</label>
+                        <div class="action-body">
+                            <select name="rules[<?php echo $index; ?>][webhook_id]" class="full-width conn-select"><option value="">انتخاب...</option><?php foreach($webhooks as $wh) if($wh['type']=='webhook') echo "<option value='{$wh['id']}' ".selected($data['webhook_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select>
+                            <textarea name="rules[<?php echo $index; ?>][message_n8n]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_n8n']??''); ?></textarea>
+                            <?php echo $vars_html; ?>
+                            <button type="button" class="button button-small test-action-btn" data-type="n8n" style="margin-top:8px;">تست آنی ⚡</button>
+                        </div>
+                    </div>
+                    
+                    <div class="action-col <?php echo $active_sms?'active':''; ?>">
+                        <label><input type="checkbox" name="rules[<?php echo $index; ?>][active_sms]" value="1" <?php checked($active_sms); ?> class="toggle-action"> پیامک</label>
+                        <div class="action-body">
+                            <select name="rules[<?php echo $index; ?>][sms_provider_id]" class="full-width conn-select"><option value="">انتخاب پنل...</option><?php foreach($webhooks as $wh) if($wh['type']=='melipayamak') echo "<option value='{$wh['id']}' ".selected($data['sms_provider_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select>
+                            <select name="rules[<?php echo $index; ?>][sms_target]" class="sms-target-select full-width"><option value="customer" <?php selected($data['sms_target']??'','customer'); ?>>مشتری</option><option value="custom" <?php selected($data['sms_target']??'','custom'); ?>>مدیر</option></select>
+                            <input type="text" name="rules[<?php echo $index; ?>][sms_custom_num]" value="<?php echo esc_attr($data['sms_custom_num']??''); ?>" class="sms-custom-input full-width" style="margin-bottom:5px;">
+                            <textarea name="rules[<?php echo $index; ?>][message_sms]" rows="3" class="msg-input"><?php echo esc_textarea($data['message_sms']??''); ?></textarea>
+                            <?php echo $vars_html; ?>
+                            <button type="button" class="button button-small test-action-btn" data-type="sms" style="margin-top:8px;">تست آنی ⚡</button>
+                        </div>
+                    </div>
+                    
+                    <div class="action-col <?php echo $active_tg?'active':''; ?>">
+                        <label><input type="checkbox" name="rules[<?php echo $index; ?>][active_tg]" value="1" <?php checked($active_tg); ?> class="toggle-action"> تلگرام</label>
+                        <div class="action-body">
+                            <select name="rules[<?php echo $index; ?>][tg_bot_id]" class="full-width conn-select"><option value="">انتخاب ربات...</option><?php foreach($webhooks as $wh) if($wh['type']=='telegram') echo "<option value='{$wh['id']}' ".selected($data['tg_bot_id']??'', $wh['id'], false).">{$wh['name']}</option>"; ?></select>
+                            <input type="text" name="rules[<?php echo $index; ?>][tg_chat_id]" value="<?php echo esc_attr($data['tg_chat_id']??''); ?>" class="full-width tg-chat-input" placeholder="Chat ID">
+                            <textarea name="rules[<?php echo $index; ?>][message_tg]" rows="2" class="msg-input"><?php echo esc_textarea($data['message_tg']??''); ?></textarea>
+                            <?php echo $vars_html; ?>
+                            <button type="button" class="button button-small test-action-btn" data-type="telegram" style="margin-top:8px;">تست آنی ⚡</button>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>

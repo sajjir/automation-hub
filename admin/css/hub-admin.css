@@ -405,3 +405,21 @@ textarea.msg-input {
     font-family: monospace;
     cursor: text;
 }
+/* اضافه کردن به انتهای فایل CSS فعلی */
+
+.test-action-btn {
+    border-color: #2271b1 !important;
+    color: #2271b1 !important;
+    background: #fff !important;
+    transition: all 0.2s !important;
+}
+
+.test-action-btn:hover {
+    background: #2271b1 !important;
+    color: #fff !important;
+}
+
+.test-action-btn.updating-message {
+    opacity: 0.7;
+    cursor: wait;
+}

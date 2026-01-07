@@ -15,7 +15,6 @@ class Hub_Bridge {
     
     public static function handle_auth_request( $phone, $otp ) {
         $data = (object) [ 'phone' => $phone, 'otp' => $otp ];
-        // این تریگر باید آنی باشد
         self::process_rules( 'auth_request', $data );
     }
 
@@ -23,9 +22,6 @@ class Hub_Bridge {
 		$rules = get_option( 'hub_rules', [] );
 		$webhooks = get_option( 'hub_webhooks', [] );
 		$wh_map = []; foreach($webhooks as $wh) $wh_map[$wh['id']] = $wh;
-
-        // آیا این یک عملیات حیاتی است؟ (مثل OTP)
-        $is_critical = ($trigger_type === 'auth_request');
 
 		foreach ( $rules as $rule ) {
 			if ( $rule['trigger'] !== $trigger_type ) continue;
@@ -66,12 +62,7 @@ class Hub_Bridge {
                     'telegram_action' => $tg_log_data
                 ];
 				$payload['_webhook_url'] = $wh_map[$rule['webhook_id']]['url'];
-				
-                if($is_critical) {
-                    Hub_Sender::send_immediate( 'n8n.send', $payload );
-                } else {
-                    Hub_Queue::push( 'n8n.send', $payload );
-                }
+				Hub_Queue::push( 'n8n.send', $payload );
 			}
 
 			// --- SMS ---
@@ -92,16 +83,10 @@ class Hub_Bridge {
 
                 if ( !empty($target_num) && isset($wh_map[$rule['sms_provider_id']]) ) {
                     $provider = $wh_map[$rule['sms_provider_id']];
-                    $args = [ 
+                    Hub_Queue::push( 'sms.send', [ 
                         'mobile' => $target_num, 'message' => $msg_sms_processed,
                         'user' => $provider['sms_user'], 'pass' => $provider['sms_pass'], 'from' => $provider['sms_from']
-                    ];
-
-                    if($is_critical) {
-                        Hub_Sender::send_immediate( 'sms.send', $args );
-                    } else {
-                        Hub_Queue::push( 'sms.send', $args );
-                    }
+                    ]);
                 }
 			}
 
@@ -110,19 +95,14 @@ class Hub_Bridge {
                 $bot_token = $wh_map[$rule['tg_bot_id']]['url'];
                 $chat_id = $rule['tg_chat_id'] ?? '';
                 if ( !empty($chat_id) ) {
-                    $args = [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg_processed ];
-                    
-                    if($is_critical) {
-                        Hub_Sender::send_immediate( 'telegram.send', $args );
-                    } else {
-                        Hub_Queue::push( 'telegram.send', $args );
-                    }
+                    Hub_Queue::push( 'telegram.send', [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg_processed ] );
                 }
             }
 		}
 	}
 
-	private static function build_payload_n8n( $entity, $processed_msg ) {
+    // تغییر به public برای استفاده در تست
+	public static function build_payload_n8n( $entity, $processed_msg ) {
         $data = [];
         if ( isset($entity->otp) ) {
             $data = [ 'event' => 'auth_request', 'phone' => $entity->phone, 'otp' => $entity->otp ];
@@ -141,7 +121,7 @@ class Hub_Bridge {
         return [ 'json_data' => $data, 'message' => $processed_msg ];
 	}
 
-    private static function normalize_number($number) {
+    public static function normalize_number($number) {
         if(empty($number)) return '';
         $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
         $arabic  = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
@@ -154,11 +134,14 @@ class Hub_Bridge {
         return $number;
     }
 
-    private static function parse_shortcodes($text, $entity) {
+    // تغییر به public برای استفاده در تست
+    public static function parse_shortcodes($text, $entity) {
         if (empty($text)) return '';
+        
         if ( isset($entity->otp) ) {
             return str_replace(['{otp}', '{phone}'], [$entity->otp, $entity->phone], $text);
         }
+
         if ( is_a( $entity, 'WC_Order' ) ) {
             $order = $entity;
             $clean_price = function($html_price) { return trim(strip_tags(html_entity_decode($html_price))); };
