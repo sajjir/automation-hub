@@ -3,17 +3,22 @@
 class Hub_Sender {
 
 	public static function init() {
-		// گوش دادن به هوک جدید که توسط صف صدا زده می‌شود (Async Worker)
+		// هوک اصلی: گوش دادن به دستوری که Hub_Queue صادر می‌کند
 		add_action( 'hub_process_queue_item', array( __CLASS__, 'process_queue_item' ), 10, 1 );
 	}
 
     /**
      * WORKER: این متد توسط Action Scheduler اجرا می‌شود.
-     * شناسه صف را می‌گیرد، ارسال می‌کند و وضعیت دیتابیس را آپدیت می‌کند.
+     * شناسه صف را می‌گیرد، اطلاعات را از دیتابیس می‌خواند و ارسال می‌کند.
      */
-    public static function process_queue_item( $queue_id ) {
+    public static function process_queue_item( $args ) {
         global $wpdb;
         $table = $wpdb->prefix . 'hub_queue';
+
+        // اصلاح آرگومان: گاهی آرایه می‌آید، گاهی عدد مستقیم
+        $queue_id = ( is_array($args) && isset($args['id']) ) ? $args['id'] : $args;
+
+        if ( empty($queue_id) ) return;
 
         // 1. دریافت آیتم از دیتابیس
         $item = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $queue_id ) );
@@ -23,13 +28,14 @@ class Hub_Sender {
             return;
         }
 
-        // 2. تغییر وضعیت به در حال پردازش
+        // 2. تغییر وضعیت به در حال پردازش (processing)
         Hub_Queue::update_status( $queue_id, 'processing' );
 
         $payload = json_decode( $item->payload, true );
         $type = $item->event_type;
 
         // 3. تلاش برای ارسال
+        // نکته: ما متد send_immediate را صدا می‌زنیم که همان منطق dispatch را دارد
         $result = self::dispatch( $type, $payload );
 
         // 4. آپدیت وضعیت نهایی بر اساس نتیجه ارسال
@@ -37,18 +43,19 @@ class Hub_Sender {
             Hub_Queue::update_status( $queue_id, 'completed' );
         } else {
             Hub_Queue::update_status( $queue_id, 'failed' );
-            // اگر نیاز باشد می‌توان اینجا لاجیک "تلاش مجدد" (Retry) را هم اضافه کرد
         }
     }
 
-    // ارسال آنی (بدون صف - مثلا برای دکمه تست)
+    /**
+     * ارسال آنی (مخصوص دکمه‌های تست دستی)
+     */
     public static function send_immediate( $type, $args ) {
         return self::dispatch( $type, $args );
     }
 
     /**
-     * Dispatcher: توزیع‌کننده مرکزی
-     * تغییر: حالا مقدار true/false برمی‌گرداند
+     * توزیع‌کننده مرکزی (Dispatcher)
+     * خروجی: true (موفق) یا false (ناموفق)
      */
     private static function dispatch( $type, $args ) {
         switch ( $type ) {
@@ -69,7 +76,7 @@ class Hub_Sender {
 
 		unset( $data['_webhook_url'] );
 
-        // مدیریت حالت تست
+        // مدیریت فلگ تست (برای تمیز بودن لاگ‌ها)
         $is_test = !empty($data['is_test_run']);
         if(isset($data['is_test_run'])) unset($data['is_test_run']);
 
@@ -84,17 +91,17 @@ class Hub_Sender {
 		$res = wp_remote_post( $url, $args );
         
         if ( is_wp_error( $res ) ) {
-            Hub_Logger::log( 'error', 'n8n', 'خطا در ارسال: ' . $res->get_error_message() );
+            Hub_Logger::log( 'خطا در ارسال n8n: ' . $res->get_error_message(), 'error', 'n8n' );
             return false;
         } 
         
-        // بررسی کد وضعیت HTTP
         $code = wp_remote_retrieve_response_code($res);
         if ( $code >= 200 && $code < 300 ) {
-            if($is_test) Hub_Logger::log( 'info', 'n8n', 'تست موفق n8n' );
+            // لاگ موفقیت (فقط در حالت تست یا دیباگ)
+            if($is_test) Hub_Logger::log( 'تست موفق n8n', 'info', 'n8n' );
             return true;
         } else {
-            Hub_Logger::log( 'error', 'n8n', "خطای سرور مقصد ($code): " . wp_remote_retrieve_body($res) );
+            Hub_Logger::log( "خطای سرور مقصد ($code): " . wp_remote_retrieve_body($res), 'error', 'n8n' );
             return false;
         }
 	}
@@ -139,15 +146,15 @@ class Hub_Sender {
         ));
         
         if ( is_wp_error( $res ) ) {
-            Hub_Logger::log( 'error', 'sms', 'خطای اتصال: ' . $res->get_error_message() );
+            Hub_Logger::log( 'خطای اتصال پیامک: ' . $res->get_error_message(), 'error', 'sms' );
             return false;
         } else {
             $json = json_decode(wp_remote_retrieve_body($res), true);
-            // بررسی موفقیت بر اساس پاسخ ملی پیامک
+            // بررسی موفقیت: Value معمولاً کد رهگیری است (اگر طولانی باشد یعنی موفق)
             if( (isset($json['Value']) && strlen($json['Value']) > 5) || (isset($json['RetStatus']) && $json['RetStatus'] == 1) ) {
                  return true;
             } else {
-                 Hub_Logger::log( 'error', 'sms', 'خطای پنل: ' . ($json['StrRetStatus'] ?? 'Unknown Error') );
+                 Hub_Logger::log( 'خطای پنل پیامک: ' . ($json['StrRetStatus'] ?? 'Unknown'), 'error', 'sms' );
                  return false;
             }
         }
@@ -177,7 +184,7 @@ class Hub_Sender {
         $res = wp_remote_post($url, $args);
         
         if ( is_wp_error( $res ) ) {
-            Hub_Logger::log( 'error', 'telegram', 'خطا: ' . $res->get_error_message() );
+            Hub_Logger::log( 'خطای اتصال تلگرام: ' . $res->get_error_message(), 'error', 'telegram' );
             return false;
         }
         
@@ -185,7 +192,7 @@ class Hub_Sender {
         if ( isset($body['ok']) && $body['ok'] == true ) {
             return true;
         } else {
-            Hub_Logger::log( 'error', 'telegram', 'خطای API: ' . ($body['description'] ?? 'Unknown') );
+            Hub_Logger::log( 'خطای API تلگرام: ' . ($body['description'] ?? 'Unknown'), 'error', 'telegram' );
             return false;
         }
     }
