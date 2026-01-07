@@ -4,11 +4,25 @@ jQuery(document).ready(function($) {
     $(document).on('change', '.input-type', function() {
         var type = $(this).val();
         var row = $(this).closest('.repeater-row');
+        
+        // مخفی کردن همه فیلدها ابتدا
         row.find('.field-group').hide();
+        
         if(type === 'melipayamak') {
             row.find('.field-sms').css('display', 'flex');
         } else {
-            row.find('.field-url').show();
+            // نمایش فیلد URL (مشترک بین n8n و تلگرام)
+            var urlField = row.find('.field-url');
+            urlField.css('display', 'flex');
+
+            // اگر نوع webhook بود دکمه تست نمایش داده شود
+            if (type === 'webhook') {
+                urlField.find('.btn-test-conn').show();
+                urlField.find('.input-url').attr('placeholder', 'https://...');
+            } else { // telegram
+                urlField.find('.btn-test-conn').hide();
+                urlField.find('.input-url').attr('placeholder', 'Bot Token');
+            }
         }
     });
 
@@ -17,6 +31,34 @@ jQuery(document).ready(function($) {
         var tpl = $('#webhook-template').html().replace(/INDEX/g, $('.webhook-row').length);
         $('#webhooks-container').append(tpl);
         $('#webhooks-container .webhook-row:last .input-type').trigger('change');
+    });
+
+    // --- مدیریت دکمه تست اتصال (URL Ping) ---
+    $(document).on('click', '.btn-test-conn', function(e) {
+        e.preventDefault();
+        var btn = $(this);
+        var input = btn.siblings('.input-url');
+        var url = input.val();
+
+        if(!url) { alert('لطفاً آدرس URL را وارد کنید.'); return; }
+
+        btn.addClass('updating-message').text('⏳');
+
+        $.post(ajaxurl, {
+            action: 'hub_test_connection',
+            nonce: $('#_wpnonce').val(),
+            url: url
+        }, function(res) {
+            btn.removeClass('updating-message').text('🔗 تست');
+            if(res.success) {
+                alert('✅ ' + res.data);
+            } else {
+                alert('❌ ' + res.data);
+            }
+        }).fail(function() {
+            btn.removeClass('updating-message').text('🔗 تست');
+            alert('❌ خطای سرور');
+        });
     });
 
     // --- 2. مدیریت سناریوها ---
@@ -52,7 +94,7 @@ jQuery(document).ready(function($) {
         headerTitle.text(val.length > 0 ? val : 'سناریو جدید');
     });
 
-    // --- 3. ویژگی جدید: تست آنی ---
+    // --- 3. ویژگی جدید: تست آنی (سناریو) ---
     $(document).on('click', '.test-action-btn', function(e) {
         e.preventDefault();
         var btn = $(this);

@@ -405,7 +405,6 @@ textarea.msg-input {
     font-family: monospace;
     cursor: text;
 }
-/* اضافه کردن به انتهای فایل CSS فعلی */
 
 .test-action-btn {
     border-color: #2271b1 !important;
@@ -422,4 +421,30 @@ textarea.msg-input {
 .test-action-btn.updating-message {
     opacity: 0.7;
     cursor: wait;
+}
+
+/* اضافه شده برای دکمه تست اتصال */
+.flex-group {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+.btn-test-conn {
+    padding: 0 10px !important;
+    min-width: auto;
+    height: 35px; /* هم‌اندازه با اینپوت */
+    line-height: 33px;
+    border-color: #2271b1 !important;
+    color: #2271b1 !important;
+    background: #f6f7f7 !important;
+}
+
+.btn-test-conn:hover {
+    background: #2271b1 !important;
+    color: #fff !important;
+}
+
+.input-url {
+    flex-grow: 1; /* اینپوت تمام فضای خالی را بگیرد */
 }

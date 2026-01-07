@@ -6,8 +6,11 @@ class Hub_Admin {
 		add_action( 'admin_menu', array( __CLASS__, 'add_admin_menu' ) );
 		add_action( 'admin_enqueue_scripts', array( __CLASS__, 'enqueue_assets' ) );
         
-        // هندلر AJAX برای تست آنی
+        // هندلر AJAX برای تست سناریو
         add_action( 'wp_ajax_hub_test_scenario', array( __CLASS__, 'handle_test_scenario' ) );
+
+        // هندلر جدید: تست اتصال (Ping URL)
+        add_action( 'wp_ajax_hub_test_connection', array( __CLASS__, 'handle_test_connection' ) );
 	}
 
 	public static function add_admin_menu() {
@@ -21,7 +24,46 @@ class Hub_Admin {
         wp_localize_script( 'hub-admin-js', 'hubData', array( 'statuses' => function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [] ) );
 	}
 
-    // --- تابع جدید: پردازش تست سناریو ---
+    // --- تابع جدید: پردازش تست اتصال ---
+    public static function handle_test_connection() {
+        if(!check_ajax_referer('hub_save_nonce', 'nonce', false) && !current_user_can('manage_options')) {
+            wp_send_json_error('عدم دسترسی');
+        }
+
+        $url = esc_url_raw($_POST['url']);
+
+        if ( empty($url) ) {
+            wp_send_json_error('آدرس URL وارد نشده است.');
+        }
+
+        if ( ! filter_var($url, FILTER_VALIDATE_URL) ) {
+            wp_send_json_error('فرمت URL نامعتبر است.');
+        }
+
+        // ارسال یک درخواست تست سبک
+        $args = array(
+            'body'        => json_encode(['test_connection' => true, 'message' => 'Hello from WordPress!']),
+            'headers'     => array( 'Content-Type' => 'application/json' ),
+            'timeout'     => 10,
+            'sslverify'   => false,
+        );
+
+        $response = wp_remote_post( $url, $args );
+
+        if ( is_wp_error( $response ) ) {
+            wp_send_json_error('خطا در برقراری ارتباط: ' . $response->get_error_message());
+        }
+
+        $response_code = wp_remote_retrieve_response_code( $response );
+        
+        if ( $response_code >= 200 && $response_code < 300 ) {
+            wp_send_json_success("ارتباط موفق بود! (Status: $response_code)");
+        } else {
+            wp_send_json_error("ارتباط برقرار شد اما خطا دریافت شد. (Status: $response_code)");
+        }
+    }
+
+    // --- تابع: پردازش تست سناریو ---
     public static function handle_test_scenario() {
         if(!check_ajax_referer('hub_save_nonce', 'nonce', false) && !current_user_can('manage_options')) {
             wp_send_json_error('عدم دسترسی');
@@ -234,8 +276,9 @@ class Hub_Admin {
                 </div>
                 
                 <div class="dynamic-fields" style="flex:2">
-                    <div class="field-group field-url" style="<?php echo ($type=='melipayamak') ? 'display:none;' : ''; ?>">
+                    <div class="field-group field-url flex-group" style="<?php echo ($type=='melipayamak') ? 'display:none;' : 'display:flex;'; ?>">
                         <input type="text" name="webhooks[<?php echo $index; ?>][url]" value="<?php echo esc_attr($data['url']??''); ?>" placeholder="Webhook URL یا Token" class="input-url full-width">
+                        <button type="button" class="button btn-test-conn" title="بررسی صحت آدرس URL">🔗 تست</button>
                     </div>
                     
                     <div class="field-group field-sms" style="<?php echo ($type!='melipayamak') ? 'display:none;' : 'display:flex; gap:5px;'; ?>">
