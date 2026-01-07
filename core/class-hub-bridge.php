@@ -7,7 +7,30 @@ class Hub_Bridge {
 		add_action( 'woocommerce_new_order', array( __CLASS__, 'handle_new_order' ), 10, 1 );
 		add_action( 'user_register', array( __CLASS__, 'handle_user_register' ), 10, 1 );
         add_action( 'hub_auth_request', array( __CLASS__, 'handle_auth_request' ), 10, 2 );
+
+        // --- هوک جدید: فرم تماس 7 ---
+        add_action( 'wpcf7_mail_sent', array( __CLASS__, 'handle_cf7_submission' ), 10, 1 );
 	}
+
+    /**
+     * هندلر فرم تماس 7
+     */
+    public static function handle_cf7_submission( $contact_form ) {
+        $submission = WPCF7_Submission::get_instance();
+        if ( ! $submission ) return;
+
+        $posted_data = $submission->get_posted_data();
+        $uploaded_files = $submission->uploaded_files();
+
+        $data = (object) [
+            'form_id' => $contact_form->id(),
+            'form_title' => $contact_form->title(),
+            'fields' => $posted_data,
+            'files' => $uploaded_files
+        ];
+
+        self::process_rules( 'cf7_submit', $data, (string)$contact_form->id() );
+    }
 
 	public static function handle_order_status( $order_id, $from, $to, $order ) { 
         $status_slug = 'wc-' . $to; 
@@ -46,6 +69,11 @@ class Hub_Bridge {
                 }
             }
 
+            // بررسی شرط فرم تماس (آیا ID فرم یکی است؟)
+            if ( $trigger_type === 'cf7_submit' ) {
+                if ( !empty($rule['cf7_form_id']) && (string)$rule['cf7_form_id'] !== (string)$sub_trigger ) continue;
+            }
+
             Hub_Logger::log("Scenario Matched: " . ($rule['name'] ?? 'Unnamed'), 'success', 'bridge');
 
             $msg_n8n_raw = $rule['message_n8n'] ?? '';
@@ -82,6 +110,11 @@ class Hub_Bridge {
                 $target_num = '';
                 if ( $trigger_type === 'auth_request' && isset($entity->phone) ) {
                     $target_num = $entity->phone;
+                } elseif ( $trigger_type === 'cf7_submit' ) {
+                    // **Smart Detection Form Field**
+                    if ( !empty($rule['cf7_mobile_field']) && isset($entity->fields[$rule['cf7_mobile_field']]) ) {
+                        $target_num = $entity->fields[$rule['cf7_mobile_field']];
+                    }
                 } else {
                     if ( ($rule['sms_target'] ?? 'customer') === 'customer' ) {
                         if ( is_a($entity, 'WC_Order') ) $target_num = $entity->get_billing_phone();
@@ -125,9 +158,28 @@ class Hub_Bridge {
 
 	public static function build_payload_n8n( $entity, $processed_msg ) {
         $data = [];
-        if ( isset($entity->otp) ) {
+
+        // 1. Contact Form 7
+        if ( isset($entity->form_id) && isset($entity->fields) ) {
+            $data = [
+                'event' => 'cf7_submit',
+                'form_id' => $entity->form_id,
+                'form_title' => $entity->form_title,
+                'fields' => $entity->fields,
+                'files' => []
+            ];
+            if(!empty($entity->files)) {
+                foreach($entity->files as $key => $path) {
+                    $data['files'][$key] = $path;
+                }
+            }
+        }
+        // 2. Auth Payload
+        elseif ( isset($entity->otp) ) {
             $data = [ 'event' => 'auth_request', 'phone' => $entity->phone, 'otp' => $entity->otp ];
-        } elseif ( is_a( $entity, 'WC_Order' ) ) {
+        }
+        // 3. WooCommerce
+        elseif ( is_a( $entity, 'WC_Order' ) ) {
             $data = [ 
                 'id' => $entity->get_id(), 
                 'total' => $entity->get_total(), 
@@ -144,9 +196,12 @@ class Hub_Bridge {
                     'product_id' => $item->get_product_id()
                 ];
             }
-        } elseif ( is_a( $entity, 'WP_User' ) ) {
+        }
+        // 4. User
+        elseif ( is_a( $entity, 'WP_User' ) ) {
             $data = [ 'id' => $entity->ID, 'email' => $entity->user_email ];
         }
+
         return [ 'json_data' => $data, 'message' => $processed_msg ];
 	}
 
@@ -169,10 +224,27 @@ class Hub_Bridge {
     public static function parse_shortcodes($text, $entity) {
         if (empty($text)) return '';
         
+        // 1. CF7 Shortcodes: {field:your-name}
+        if ( isset($entity->form_id) && isset($entity->fields) ) {
+            $text = str_replace('{form_title}', $entity->form_title, $text);
+            $text = str_replace('{form_id}', $entity->form_id, $text);
+
+            return preg_replace_callback('/\{field:([^}]+)\}/', function($matches) use ($entity) {
+                $field_name = $matches[1];
+                if ( isset($entity->fields[$field_name]) ) {
+                    $val = $entity->fields[$field_name];
+                    return is_array($val) ? implode(', ', $val) : $val;
+                }
+                return '';
+            }, $text);
+        }
+
+        // 2. Auth
         if ( isset($entity->otp) ) {
             return str_replace(['{otp}', '{phone}'], [$entity->otp, $entity->phone], $text);
         }
 
+        // 3. WooCommerce
         if ( is_a( $entity, 'WC_Order' ) ) {
             $order = $entity;
             $clean_price = function($html_price) { return trim(strip_tags(html_entity_decode($html_price))); };
