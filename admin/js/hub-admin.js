@@ -69,6 +69,7 @@ jQuery(document).ready(function($) {
         $('#rules-container').append(newRow);
         $('.no-data-msg').remove();
         initLogic();
+        updateTriggerUI(newRow); // بروزرسانی UI سطر جدید
         newRow.find('.rule-header').trigger('click');
         $('html, body').animate({ scrollTop: newRow.offset().top - 50 }, 500);
     });
@@ -131,14 +132,34 @@ jQuery(document).ready(function($) {
         });
     });
 
-    // --- 4. لاجیک شرطی ---
-    function initLogic() {
-        $('.trigger-select').off('change').on('change', function() {
-            var val = $(this).val();
-            var row = $(this).closest('.rule-row');
-            val === 'order_status' ? row.find('.sub-trigger-select').show() : row.find('.sub-trigger-select').hide();
-        }).trigger('change');
+    // --- 4. لاجیک شرطی و نمایش تریگرها ---
 
+    // تابع جدید برای مدیریت نمایش فیلدها بر اساس تریگر
+    function updateTriggerUI(row) {
+        var trigger = row.find('.trigger-select').val();
+
+        // 1. نمایش/مخفی کردن شرط‌های خاص (ساب تریگرها)
+        row.find('.condition-box').hide();
+        row.find('.cond-' + trigger).show();
+
+        // 2. نمایش راهنمای شورت‌کد مربوطه
+        row.find('.trigger-guide').hide();
+
+        // نگاشت تریگر به کلاس راهنما
+        if(trigger === 'order_status' || trigger === 'order_created') {
+            row.find('.guide-order_status').show();
+        } else {
+            row.find('.guide-' + trigger).show();
+        }
+    }
+
+    function initLogic() {
+        // تغییرات تریگر
+        $('.trigger-select').off('change').on('change', function() {
+            updateTriggerUI($(this).closest('.rule-row'));
+        });
+
+        // اکشن‌های دیگر
         $('.toggle-action').off('change').on('change', function() {
             var col = $(this).closest('.action-col');
             $(this).is(':checked') ? col.addClass('active') : col.removeClass('active');
@@ -161,4 +182,9 @@ jQuery(document).ready(function($) {
 
     initLogic();
     $('.input-type').trigger('change');
+
+    // اجرا برای تمام سطرهای موجود هنگام لود
+    $('.rule-row').each(function(){
+        updateTriggerUI($(this));
+    });
 });

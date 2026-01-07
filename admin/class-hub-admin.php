@@ -24,6 +24,22 @@ class Hub_Admin {
         wp_localize_script( 'hub-admin-js', 'hubData', array( 'statuses' => function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [] ) );
 	}
 
+    // --- تابع کمکی برای دریافت فرم‌های CF7 ---
+    private static function get_cf7_forms() {
+        if ( ! post_type_exists( 'wpcf7_contact_form' ) ) {
+            return [];
+        }
+        $forms = get_posts( array(
+            'post_type' => 'wpcf7_contact_form',
+            'posts_per_page' => -1,
+        ) );
+        $options = [];
+        foreach ( $forms as $form ) {
+            $options[ $form->ID ] = $form->post_title . " (ID: $form->ID)";
+        }
+        return $options;
+    }
+
     // --- تابع جدید: پردازش تست اتصال ---
     public static function handle_test_connection() {
         if(!check_ajax_referer('hub_save_nonce', 'nonce', false) && !current_user_can('manage_options')) {
@@ -199,10 +215,28 @@ class Hub_Admin {
                 if($index === 'INDEX') continue;
                 if(empty($rule['trigger'])) continue;
 
-                $rule['name'] = sanitize_text_field($rule['name'] ?? ''); 
+                $rule['name'] = sanitize_text_field($rule['name'] ?? '');
+                $rule['trigger'] = sanitize_text_field($rule['trigger']);
+                $rule['sub_trigger'] = sanitize_text_field($rule['sub_trigger'] ?? '');
+                // فیلدهای جدید مربوط به CF7
+                $rule['cf7_form_id'] = sanitize_text_field($rule['cf7_form_id'] ?? '');
+                $rule['cf7_mobile_field'] = sanitize_text_field($rule['cf7_mobile_field'] ?? '');
+
                 $rule['message_n8n'] = wp_kses_post($rule['message_n8n'] ?? '');
                 $rule['message_sms'] = sanitize_textarea_field($rule['message_sms'] ?? '');
                 $rule['message_tg'] = wp_kses_post($rule['message_tg'] ?? '');
+
+                // سایر فیلدهای که ممکن است نیاز باشند
+                $rule['active_n8n'] = isset($rule['active_n8n']);
+                $rule['active_sms'] = isset($rule['active_sms']);
+                $rule['active_tg'] = isset($rule['active_tg']);
+                $rule['webhook_id'] = sanitize_text_field($rule['webhook_id'] ?? '');
+                $rule['sms_provider_id'] = sanitize_text_field($rule['sms_provider_id'] ?? '');
+                $rule['sms_target'] = sanitize_text_field($rule['sms_target'] ?? 'customer');
+                $rule['sms_custom_num'] = sanitize_text_field($rule['sms_custom_num'] ?? '');
+                $rule['tg_bot_id'] = sanitize_text_field($rule['tg_bot_id'] ?? '');
+                $rule['tg_chat_id'] = sanitize_text_field($rule['tg_chat_id'] ?? '');
+
                 $clean_rules[] = $rule;
             }
             update_option('hub_rules', $clean_rules);
@@ -316,6 +350,7 @@ class Hub_Admin {
         $rules = get_option('hub_rules', []); 
         $webhooks = get_option('hub_webhooks', []); 
         $wc_statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses() : [];
+        $cf7_forms = self::get_cf7_forms();
         ?>
         <div class="hub-card">
             <div class="hub-card-header">
@@ -323,21 +358,34 @@ class Hub_Admin {
                 <button type="button" class="button button-primary" id="add-rule">+ سناریوی جدید</button>
             </div>
             <div class="hub-card-body" id="rules-container">
-                <?php if(empty($rules)): ?><p class="no-data-msg">هنوز هیچ سناریویی تعریف نکرده‌اید.</p><?php else: foreach($rules as $i => $rule) self::render_rule_row($i, $rule, $webhooks, $wc_statuses); endif; ?>
+                <?php if(empty($rules)): ?><p class="no-data-msg">هنوز هیچ سناریویی تعریف نکرده‌اید.</p><?php else: foreach($rules as $i => $rule) self::render_rule_row($i, $rule, $webhooks, $wc_statuses, $cf7_forms); endif; ?>
             </div>
         </div>
-        <div id="rule-template" style="display:none;"><?php self::render_rule_row('INDEX', [], $webhooks, $wc_statuses, true); ?></div>
+        <div id="rule-template" style="display:none;"><?php self::render_rule_row('INDEX', [], $webhooks, $wc_statuses, $cf7_forms, true); ?></div>
         <?php
     }
 
-    private static function render_rule_row($index, $data, $webhooks, $wc_statuses, $is_template = false) {
+    private static function render_rule_row($index, $data, $webhooks, $wc_statuses, $cf7_forms, $is_template = false) {
         $active_n8n = !empty($data['active_n8n']); $active_sms = !empty($data['active_sms']); $active_tg = !empty($data['active_tg']); $trigger = $data['trigger'] ?? '';
         $rule_name = !empty($data['name']) ? $data['name'] : ($is_template ? 'سناریوی جدید' : 'سناریو #' . ($index+1));
         
-        $vars_html = '<div class="var-list">';
-        if($trigger === 'auth_request') { $vars_html .= '<span class="var-tag" data-insert="{otp}">{otp}</span><span class="var-tag" data-insert="{phone}">{phone}</span>'; } 
-        else { $vars_html .= '<span class="var-tag" data-insert="{full_name}">{full_name}</span><span class="var-tag" data-insert="{order_id}">{order_id}</span><span class="var-tag" data-insert="{total}">{total}</span>'; }
+        // shortcode guides
+        // note: logic for showing correct guide is handled by JS now
+        $vars_html = '<div class="var-list trigger-guide guide-auth_request" style="display:none">';
+        $vars_html .= '<span class="var-tag" data-insert="{otp}">{otp}</span><span class="var-tag" data-insert="{phone}">{phone}</span>';
         $vars_html .= '</div>';
+
+        $vars_html .= '<div class="var-list trigger-guide guide-order_status guide-order_created" style="display:none">';
+        $vars_html .= '<span class="var-tag" data-insert="{full_name}">{full_name}</span><span class="var-tag" data-insert="{order_id}">{order_id}</span><span class="var-tag" data-insert="{total}">{total}</span>';
+        $vars_html .= '</div>';
+
+        $vars_html .= '<div class="trigger-guide guide-cf7_submit shortcode-guide" style="display:none">';
+        $vars_html .= '<strong>💡 راهنمای فرم تماس:</strong><br>';
+        $vars_html .= 'برای استفاده از مقادیر فرم، از شورت‌کد <code>{field:name_of_field}</code> استفاده کنید.<br>';
+        $vars_html .= 'مثال: اگر در فرم فیلدی با نام <code>your-email</code> دارید، بنویسید: <code>{field:your-email}</code>';
+        $vars_html .= '</div>';
+
+        // default to show something if needed, but JS will fix it immediately
         ?>
         <div class="repeater-row rule-row <?php echo $is_template ? 'open' : ''; ?>">
             <div class="rule-header">
@@ -361,16 +409,33 @@ class Hub_Admin {
                     <label>۱. شرط اجرا</label>
                     <div class="flex-row">
                         <select name="rules[<?php echo $index; ?>][trigger]" class="trigger-select full-width">
-                            <optgroup label="فروشگاه">
-                                <option value="order_status" <?php selected($trigger,'order_status'); ?>>تغییر وضعیت سفارش</option>
-                                <option value="order_created" <?php selected($trigger,'order_created'); ?>>ثبت سفارش جدید</option>
-                            </optgroup>
-                            <optgroup label="کاربران">
-                                <option value="auth_request" <?php selected($trigger,'auth_request'); ?>>🔐 درخواست OTP</option>
-                                <option value="user_register" <?php selected($trigger,'user_register'); ?>>ثبت‌نام موفق</option>
-                            </optgroup>
+                            <option value="order_status" <?php selected($trigger, 'order_status'); ?>>تغییر وضعیت سفارش (WooCommerce)</option>
+                            <option value="order_created" <?php selected($trigger, 'order_created'); ?>>سفارش جدید (ایجاد شده)</option>
+                            <option value="cf7_submit" <?php selected($trigger, 'cf7_submit'); ?>>ثبت فرم تماس (Contact Form 7)</option>
+                            <option value="user_register" <?php selected($trigger, 'user_register'); ?>>ثبت نام کاربر جدید</option>
+                            <option value="auth_request" <?php selected($trigger, 'auth_request'); ?>>درخواست ورود (OTP)</option>
                         </select>
-                        <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select full-width"><option value="">-- انتخاب وضعیت --</option><?php foreach($wc_statuses as $k=>$v) echo "<option value='$k' ".selected($data['sub_trigger']??'', $k, false).">$v</option>"; ?></select>
+
+                        <div class="trigger-conditions full-width">
+                             <div class="condition-box cond-order_status" style="<?php echo ($trigger !== 'order_status') ? 'display:none' : ''; ?>">
+                                <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select full-width">
+                                    <option value="">-- همه وضعیت‌ها --</option>
+                                    <?php foreach($wc_statuses as $k=>$v) echo "<option value='".str_replace('wc-', '', $k)."' ".selected($data['sub_trigger']??'', str_replace('wc-', '', $k), false).">$v</option>"; ?>
+                                </select>
+                            </div>
+
+                            <div class="condition-box cond-cf7_submit" style="<?php echo ($trigger !== 'cf7_submit') ? 'display:none' : ''; ?>">
+                                <select name="rules[<?php echo $index; ?>][cf7_form_id]" class="full-width">
+                                    <option value="">-- همه فرم‌ها --</option>
+                                    <?php foreach($cf7_forms as $id=>$title): ?>
+                                        <option value="<?php echo $id; ?>" <?php selected(($data['cf7_form_id']??''), $id); ?>><?php echo $title; ?></option>
+                                    <?php endforeach; ?>
+                                </select>
+
+                                <label style="margin-top:5px; display:block; font-size:11px; color:#666;">نام فیلد موبایل (جهت ارسال SMS به کاربر):</label>
+                                <input type="text" name="rules[<?php echo $index; ?>][cf7_mobile_field]" value="<?php echo esc_attr($data['cf7_mobile_field'] ?? ''); ?>" placeholder="مثلا: your-mobile" class="full-width" style="font-size:11px;">
+                            </div>
+                        </div>
                     </div>
                 </div>
 
