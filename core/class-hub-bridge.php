@@ -10,7 +10,6 @@ class Hub_Bridge {
 	}
 
 	public static function handle_order_status( $order_id, $from, $to, $order ) { 
-        // اطمینان از فرمت صحیح وضعیت برای مقایسه
         $status_slug = 'wc-' . $to; 
         self::process_rules( 'order_status', $order, $status_slug ); 
     }
@@ -35,14 +34,12 @@ class Hub_Bridge {
 		$webhooks = get_option( 'hub_webhooks', [] );
 		$wh_map = []; foreach($webhooks as $wh) $wh_map[$wh['id']] = $wh;
 
-        // لاگ شروع پردازش
+        // لاگ دیباگ شروع
         Hub_Logger::log("Trigger Fired: $trigger_type" . ($sub_trigger ? " ($sub_trigger)" : ""), 'info', 'bridge_debug');
 
 		foreach ( $rules as $rule ) {
-            // بررسی تطابق تریگر
 			if ( $rule['trigger'] !== $trigger_type ) continue;
 			
-            // بررسی تطابق ساب‌تریگر (وضعیت سفارش)
             if ( $trigger_type === 'order_status' ) {
                 if ( !empty($rule['sub_trigger']) && $rule['sub_trigger'] !== $sub_trigger ) {
                     continue;
@@ -51,16 +48,16 @@ class Hub_Bridge {
 
             Hub_Logger::log("Scenario Matched: " . ($rule['name'] ?? 'Unnamed'), 'success', 'bridge');
 
-            // پردازش متن پیام‌ها
             $msg_n8n_raw = $rule['message_n8n'] ?? '';
             $msg_sms_raw = $rule['message_sms'] ?? '';
             $msg_tg_raw  = $rule['message_tg'] ?? '';
 
+            // پردازش شورت‌کدها با منطق جدید
             $msg_n8n_processed = self::parse_shortcodes( $msg_n8n_raw, $entity );
             $msg_sms_processed = !empty($rule['active_sms']) ? self::parse_shortcodes( $msg_sms_raw, $entity ) : '';
             $msg_tg_processed  = !empty($rule['active_tg']) ? self::parse_shortcodes( $msg_tg_raw, $entity ) : '';
 
-            // --- 1. ارسال تلگرام (آنی) ---
+            // --- 1. Telegram ---
             $tg_log_data = [ 'active' => false, 'message' => '' ];
             if ( !empty($rule['active_tg']) && !empty($rule['tg_bot_id']) && isset($wh_map[$rule['tg_bot_id']]) ) {
                 $tg_log_data = [
@@ -69,17 +66,15 @@ class Hub_Bridge {
                     'chat_id' => $rule['tg_chat_id'] ?? '',
                     'message' => $msg_tg_processed
                 ];
-                
                 $bot_token = $wh_map[$rule['tg_bot_id']]['url'];
                 $chat_id = $rule['tg_chat_id'] ?? '';
                 
                 if ( !empty($chat_id) ) {
-                    // تغییر مهم: استفاده از send_immediate به جای push
                     Hub_Sender::send_immediate( 'telegram.send', [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg_processed ] );
                 }
             }
 
-            // --- 2. ارسال پیامک (آنی) ---
+            // --- 2. SMS ---
             $sms_log_data = [ 'active' => false, 'message' => '' ];
             if ( !empty($rule['active_sms']) ) {
                 $sms_log_data = [ 'active' => true, 'message' => $msg_sms_processed ];
@@ -99,7 +94,6 @@ class Hub_Bridge {
 
                 if ( !empty($target_num) && !empty($rule['sms_provider_id']) && isset($wh_map[$rule['sms_provider_id']]) ) {
                      $provider = $wh_map[$rule['sms_provider_id']];
-                     // تغییر مهم: استفاده از send_immediate
                      Hub_Sender::send_immediate( 'sms.send', [ 
                         'mobile' => $target_num, 'message' => $msg_sms_processed,
                         'user' => $provider['sms_user'], 'pass' => $provider['sms_pass'], 'from' => $provider['sms_from']
@@ -107,7 +101,7 @@ class Hub_Bridge {
                 }
             }
 
-			// --- 3. ارسال به n8n (آنی) ---
+			// --- 3. n8n ---
 			if ( !empty($rule['active_n8n']) ) {
                 if ( !empty($rule['webhook_id']) && isset($wh_map[$rule['webhook_id']]) ) {
                     $payload = self::build_payload_n8n( $entity, $msg_n8n_processed );
@@ -121,7 +115,6 @@ class Hub_Bridge {
                     ];
                     $payload['_webhook_url'] = $wh_map[$rule['webhook_id']]['url'];
                     
-                    // تغییر مهم: استفاده از send_immediate به جای push
                     Hub_Sender::send_immediate( 'n8n.send', $payload );
                 } else {
                     Hub_Logger::log("n8n Skipped: Webhook ID not found", 'error', 'bridge');
@@ -130,7 +123,6 @@ class Hub_Bridge {
 		}
 	}
 
-    // متدهای کمکی (بدون تغییر)
 	public static function build_payload_n8n( $entity, $processed_msg ) {
         $data = [];
         if ( isset($entity->otp) ) {
@@ -171,6 +163,9 @@ class Hub_Bridge {
         return $number;
     }
 
+    /**
+     * Shortcode Parser - Advanced Version with Scraper Matcher
+     */
     public static function parse_shortcodes($text, $entity) {
         if (empty($text)) return '';
         
@@ -197,13 +192,106 @@ class Hub_Bridge {
                 '{total}' => $clean_price(wc_price($order->get_total())),
             ];
 
+            // 1. لیست خلاصه
+            if (strpos($text, '{items_summary}') !== false) {
+                $lines = [];
+                foreach ($order->get_items() as $item) {
+                    $lines[] = "▪️ " . $item->get_name() . " (×" . $item->get_quantity() . ")";
+                }
+                $vars['{items_summary}'] = implode("\n", $lines);
+            }
+
+            // 2. لیست کامل (با قیمت)
             if (strpos($text, '{items_detailed}') !== false) {
                 $lines = [];
                 foreach ($order->get_items() as $item) {
-                    $lines[] = "- " . $item->get_name() . " (×" . $item->get_quantity() . ")";
+                    $price_clean = $clean_price(wc_price($item->get_total()));
+                    $lines[] = "🛒 " . $item->get_name() . "\n   تعداد: " . $item->get_quantity() . " | قیمت: " . $price_clean;
                 }
-                $vars['{items_detailed}'] = implode("\n", $lines);
+                $vars['{items_detailed}'] = implode("\n----------------\n", $lines);
             }
+
+            // 3. اسکرپر (با موتور تطبیق پیشرفته از نسخه MVP)
+            if (strpos($text, '{_scrape_raw_result_}') !== false) {
+                $scrape_list = "";
+
+                foreach ($order->get_items() as $item) {
+                    $product = $item->get_product(); 
+                    if ($product) {
+                        $price_display = "قیمت مبدا ندارد ❌";
+                        $found_row = null;
+
+                        // شناسایی والد (اگر وارییشن است)
+                        $parent_id = $product->is_type('variation') ? $product->get_parent_id() : $product->get_id();
+                        
+                        // دریافت JSON خام
+                        $raw_json = get_post_meta($parent_id, '_last_scrape_raw_result', true);
+                        $scraped_rows = [];
+
+                        if ($raw_json) {
+                            $decoded = json_decode($raw_json, true);
+                            if (!$decoded && is_string($raw_json)) $decoded = json_decode(stripslashes($raw_json), true);
+                            
+                            if ($decoded) {
+                                if (!isset($decoded[0])) $scraped_rows = [$decoded];
+                                else $scraped_rows = $decoded;
+                            }
+                        }
+
+                        // --- موتور تطبیق (Matching Engine) ---
+                        if (!empty($scraped_rows) && is_array($scraped_rows)) {
+                            
+                            if (!$product->is_type('variation')) {
+                                $found_row = reset($scraped_rows);
+                            } else {
+                                foreach ($scraped_rows as $row) {
+                                    $is_match = true;
+                                    // بررسی ویژگی‌ها (Attributes)
+                                    foreach ($row as $key => $val) {
+                                        if (strpos($key, 'pa_') === 0) {
+                                            $wc_attr_val = $product->get_attribute($key);
+                                            // نرمال‌سازی برای مقایسه
+                                            $v1 = trim((string)$wc_attr_val);
+                                            $v2 = trim((string)$val);
+                                            
+                                            if ($v1 !== $v2) {
+                                                $is_match = false;
+                                                break; 
+                                            }
+                                        }
+                                    }
+                                    
+                                    if ($is_match) {
+                                        $found_row = $row;
+                                        break; 
+                                    }
+                                }
+                            }
+                        }
+
+                        // استخراج قیمت خرید (سورس)
+                        if ($found_row) {
+                            $p = null;
+                            if (isset($found_row['price'])) $p = $found_row['price'];
+                            elseif (isset($found_row['amount'])) $p = $found_row['amount'];
+                            elseif (isset($found_row['lowest_price'])) $p = $found_row['lowest_price'];
+
+                            if ($p) {
+                                $price_display = number_format((float)$p) . " تومان ✅";
+                            }
+                        }
+                        
+                        // اضافه کردن به لیست خروجی
+                        if ($price_display !== "قیمت مبدا ندارد ❌") {
+                            $scrape_list .= "📦 " . $product->get_name() . "\n   💰 قیمت خرید: " . $price_display . "\n";
+                        }
+                    }
+                }
+                
+                if (empty($scrape_list)) $scrape_list = "هیچ داده قیمت خریدی یافت نشد.";
+                $vars['{_scrape_raw_result_}'] = $scrape_list;
+            }
+
             return str_replace(array_keys($vars), array_values($vars), $text);
         }
         return $text;
