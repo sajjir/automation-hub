@@ -15,6 +15,7 @@ class Hub_Bridge {
     
     public static function handle_auth_request( $phone, $otp ) {
         $data = (object) [ 'phone' => $phone, 'otp' => $otp ];
+        // این تریگر باید آنی باشد
         self::process_rules( 'auth_request', $data );
     }
 
@@ -22,6 +23,9 @@ class Hub_Bridge {
 		$rules = get_option( 'hub_rules', [] );
 		$webhooks = get_option( 'hub_webhooks', [] );
 		$wh_map = []; foreach($webhooks as $wh) $wh_map[$wh['id']] = $wh;
+
+        // آیا این یک عملیات حیاتی است؟ (مثل OTP)
+        $is_critical = ($trigger_type === 'auth_request');
 
 		foreach ( $rules as $rule ) {
 			if ( $rule['trigger'] !== $trigger_type ) continue;
@@ -62,7 +66,12 @@ class Hub_Bridge {
                     'telegram_action' => $tg_log_data
                 ];
 				$payload['_webhook_url'] = $wh_map[$rule['webhook_id']]['url'];
-				Hub_Queue::push( 'n8n.send', $payload );
+				
+                if($is_critical) {
+                    Hub_Sender::send_immediate( 'n8n.send', $payload );
+                } else {
+                    Hub_Queue::push( 'n8n.send', $payload );
+                }
 			}
 
 			// --- SMS ---
@@ -83,10 +92,16 @@ class Hub_Bridge {
 
                 if ( !empty($target_num) && isset($wh_map[$rule['sms_provider_id']]) ) {
                     $provider = $wh_map[$rule['sms_provider_id']];
-                    Hub_Queue::push( 'sms.send', [ 
+                    $args = [ 
                         'mobile' => $target_num, 'message' => $msg_sms_processed,
                         'user' => $provider['sms_user'], 'pass' => $provider['sms_pass'], 'from' => $provider['sms_from']
-                    ]);
+                    ];
+
+                    if($is_critical) {
+                        Hub_Sender::send_immediate( 'sms.send', $args );
+                    } else {
+                        Hub_Queue::push( 'sms.send', $args );
+                    }
                 }
 			}
 
@@ -95,7 +110,13 @@ class Hub_Bridge {
                 $bot_token = $wh_map[$rule['tg_bot_id']]['url'];
                 $chat_id = $rule['tg_chat_id'] ?? '';
                 if ( !empty($chat_id) ) {
-                    Hub_Queue::push( 'telegram.send', [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg_processed ] );
+                    $args = [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg_processed ];
+                    
+                    if($is_critical) {
+                        Hub_Sender::send_immediate( 'telegram.send', $args );
+                    } else {
+                        Hub_Queue::push( 'telegram.send', $args );
+                    }
                 }
             }
 		}
@@ -120,21 +141,16 @@ class Hub_Bridge {
         return [ 'json_data' => $data, 'message' => $processed_msg ];
 	}
 
-    // --- FIX: اصلاح لاجیک نرمال‌سازی شماره (همسان با Hub_Auth) ---
     private static function normalize_number($number) {
         if(empty($number)) return '';
-        
         $persian = ['۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹'];
         $arabic  = ['٠', '١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩'];
         $english = ['0', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
-        
         $number = str_replace($persian, $english, $number);
         $number = str_replace($arabic, $english, $number);
         $number = preg_replace('/[^0-9]/', '', $number);
-        
         if (substr($number, 0, 3) === '989') $number = '0' . substr($number, 2);
         if (substr($number, 0, 1) === '9') $number = '0' . $number;
-        
         return $number;
     }
 

@@ -3,107 +3,158 @@
 class Hub_Sender {
 
 	public static function init() {
-        if ( ! function_exists( 'as_next_scheduled_action' ) ) return;
-		add_action( 'hub_process_queue_event', array( __CLASS__, 'process_batch' ) );
-		if ( ! as_next_scheduled_action( 'hub_process_queue_event' ) ) as_schedule_recurring_action( time(), 60, 'hub_process_queue_event' );
+		// گوش دادن به صف (برای کارهای غیرضروری مثل تغییر وضعیت سفارش)
+		add_action( 'hub_process_queue_event', array( __CLASS__, 'handle_queued_event' ), 10, 2 );
 	}
 
-	public static function process_batch() {
-		$items = Hub_Queue::fetch_batch( 5 );
-		if ( empty( $items ) ) return;
-
-		foreach ( $items as $item ) {
-            Hub_Queue::update_status( $item->id, 'processing' );
-            $payload = json_decode($item->payload, true);
-            $success = false;
-            $log_msg = '';
-
-            try {
-                // 1. n8n
-                if ( $item->event_type === 'n8n.send' ) {
-                    $url = $payload['_webhook_url'] ?? '';
-                    unset($payload['_webhook_url']);
-                    $res = wp_remote_post( $url, [ 'body' => json_encode($payload), 'headers' => ['Content-Type'=>'application/json'], 'timeout'=>20 ] );
-                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = 'Sent to n8n'; }
-                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'HTTP Error ' . wp_remote_retrieve_response_code($res); }
-                }
-
-                // 2. SMS (Melipayamak Smart Sender) 📩
-                elseif ( $item->event_type === 'sms.send' ) {
-                    
-                    $username = $payload['user'];
-                    $password = $payload['pass'];
-                    $to       = $payload['mobile'];
-                    $text     = $payload['message'];
-                    
-                    // تشخیص هوشمند: آیا پترن است؟ (مثلاً @12345@علی;سفارش)
-                    if ( strpos( trim($text), '@' ) === 0 ) {
-                        // --- روش ارسال پترن (Shared Line) ---
-                        // فرمت باید این باشد: @کد_پترن@مقداری1;مقدار2;مقدار3
-                        $parts = explode('@', $text);
-                        // $parts[0] خالی است، $parts[1] کد پترن، $parts[2] متغیرها
-                        
-                        if ( isset($parts[1]) && is_numeric($parts[1]) ) {
-                            $bodyId = $parts[1];
-                            $args_str = isset($parts[2]) ? $parts[2] : '';
-                            $args = explode(';', $args_str); // جدا کردن متغیرها با ;
-                            
-                            $url = 'https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber';
-                            $body = [
-                                'username' => $username,
-                                'password' => $password,
-                                'text'     => implode(';', $args), // ملی پیامک متن‌ها را با ; می‌گیرد
-                                'to'       => $to,
-                                'bodyId'   => (int)$bodyId
-                            ];
-                            
-                            $log_mode = "Pattern ($bodyId)";
-                        } else {
-                            // فرمت غلط بود، تلاش برای ارسال عادی
-                            $url = 'https://rest.payamak-panel.com/api/SendSMS/SendSMS';
-                            $body = ['username'=>$username, 'password'=>$password, 'to'=>$to, 'from'=>$payload['from'], 'text'=>$text, 'isFlash'=>false];
-                            $log_mode = "Normal (Fallback)";
-                        }
-                    } else {
-                        // --- روش ارسال معمولی (تبلیغاتی) ---
-                        $url = 'https://rest.payamak-panel.com/api/SendSMS/SendSMS';
-                        $body = ['username'=>$username, 'password'=>$password, 'to'=>$to, 'from'=>$payload['from'], 'text'=>$text, 'isFlash'=>false];
-                        $log_mode = "Normal";
-                    }
-
-                    // ارسال درخواست
-                    $res = wp_remote_post( $url, [ 
-                        'body' => json_encode($body), 
-                        'headers' => ['Content-Type' => 'application/json'], 
-                        'timeout' => 15 
-                    ]);
-
-                    if ( is_wp_error($res) ) {
-                        $log_msg = "SMS Connect Error: " . $res->get_error_message();
-                    } else {
-                        $json = json_decode(wp_remote_retrieve_body($res), true);
-                        // بررسی موفقیت (Value طولانی یعنی ID پیام)
-                        if ( isset($json['Value']) && strlen($json['Value']) > 5 ) {
-                            $success = true;
-                            $log_msg = "SMS Sent ($log_mode)! ID: " . $json['Value'];
-                        } else {
-                            $log_msg = "Melipayamak Error ($log_mode): " . wp_remote_retrieve_body($res);
-                        }
-                    }
-                }
-
-                // 3. Telegram
-                elseif ( $item->event_type === 'telegram.send' ) {
-                    $api_url = "https://api.telegram.org/bot{$payload['token']}/sendMessage";
-                    $res = wp_remote_post( $api_url, [ 'body' => [ 'chat_id' => $payload['chat_id'], 'text' => $payload['message'], 'parse_mode' => 'HTML' ], 'timeout'=>15 ] );
-                    if(!is_wp_error($res) && wp_remote_retrieve_response_code($res) < 300) { $success = true; $log_msg = "Telegram sent"; }
-                    else { $log_msg = is_wp_error($res) ? $res->get_error_message() : 'Telegram Error'; }
-                }
-
-            } catch (Exception $e) { $log_msg = $e->getMessage(); }
-
-            Hub_Queue::update_status( $item->id, $success ? 'completed' : 'failed' );
-            Hub_Logger::log( $log_msg, $success ? 'success' : 'error', 'sender' );
-		}
+    // این متد توسط صف صدا زده می‌شود
+	public static function handle_queued_event( $type, $args ) {
+        self::dispatch( $type, $args );
 	}
+
+    // متد جدید: ارسال آنی (بدون صف)
+    public static function send_immediate( $type, $args ) {
+        self::dispatch( $type, $args );
+    }
+
+    // مغز متفکر ارسال (مشترک بین صف و ارسال آنی)
+    private static function dispatch( $type, $args ) {
+        switch ( $type ) {
+            case 'n8n.send':
+                self::send_to_n8n( $args );
+                break;
+            case 'sms.send':
+                self::send_sms( $args );
+                break;
+            case 'telegram.send':
+                self::send_telegram( $args );
+                break;
+        }
+    }
+
+	private static function send_to_n8n( $data ) {
+		$url = $data['_webhook_url'] ?? '';
+		if ( empty( $url ) ) return;
+
+		unset( $data['_webhook_url'] );
+
+		$args = array(
+			'body'        => json_encode( $data ),
+			'headers'     => array( 'Content-Type' => 'application/json' ),
+			'timeout'     => 15, // کاهش تایم‌اوت برای جلوگیری از کندی سایت در حالت آنی
+			'blocking'    => true,
+            'sslverify'   => false,
+		);
+
+		$res = wp_remote_post( $url, $args );
+        
+        // لاگ کردن نتیجه
+        if ( is_wp_error( $res ) ) {
+            Hub_Logger::log( 'error', 'n8n', 'خطا در ارسال: ' . $res->get_error_message() );
+        } else {
+            // فقط اگر موفق بود لاگ نکنیم که دیتابیس پر نشه، مگر دیباگ فعال باشه
+            // Hub_Logger::log( 'info', 'n8n', 'ارسال موفق به وب‌هوک' );
+        }
+	}
+
+	private static function send_sms( $data ) {
+        // اطلاعات حساب
+        $user = $data['user'];
+        $pass = $data['pass'];
+        $from = $data['from'];
+        $to   = $data['mobile'];
+        $text = $data['message'];
+
+        if(empty($user) || empty($pass) || empty($to)) return;
+
+        // تشخیص پترن (اگر متن با @ شروع شود)
+        if ( strpos( $text, '@' ) === 0 ) {
+            // فرمت پترن: @Code@Var1;Var2
+            // مثال: @12345@Ali;12000
+            $parts = explode( '@', substr( $text, 1 ) ); // حذف @ اول
+            if ( count( $parts ) >= 2 ) {
+                $bodyId = $parts[0]; // کد پترن
+                $vars_raw = $parts[1]; // متغیرها
+                $vars = explode( ';', $vars_raw );
+                
+                // ارسال از طریق پترن (SharedLine)
+                $api_url = "https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber";
+                $payload = array(
+                    'username' => $user,
+                    'password' => $pass,
+                    'text' => implode(';', $vars), // مقادیر متغیرها با ; جدا شوند
+                    'to' => $to,
+                    'bodyId' => intval($bodyId)
+                );
+            } else {
+                return; // فرمت غلط
+            }
+        } else {
+            // ارسال معمولی
+            $api_url = "https://rest.payamak-panel.com/api/SendSMS/SendSMS";
+            $payload = array(
+                'username' => $user,
+                'password' => $pass,
+                'to' => $to,
+                'from' => $from,
+                'text' => $text,
+                'isflash' => false
+            );
+        }
+
+        $args = array(
+            'body'    => $payload,
+            'headers' => array('Content-Type' => 'application/x-www-form-urlencoded'), // ملی پیامک معمولا فرم می‌گیرد
+            'timeout' => 15
+        );
+
+        $res = wp_remote_post( $api_url, $args );
+        
+        if ( is_wp_error( $res ) ) {
+            Hub_Logger::log( 'error', 'sms', 'خطای اتصال: ' . $res->get_error_message() );
+        } else {
+            $body = wp_remote_retrieve_body($res);
+            $json = json_decode($body, true);
+            // لاگ پاسخ ملی پیامک
+            if(isset($json['Value']) && strlen($json['Value']) > 15) {
+                 Hub_Logger::log( 'info', 'sms', 'ارسال موفق. شناسه: ' . $json['Value'] );
+            } elseif(isset($json['RetStatus']) && $json['RetStatus'] != 1) {
+                 Hub_Logger::log( 'error', 'sms', 'خطای پنل: ' . $json['StrRetStatus'] );
+            }
+        }
+	}
+
+    private static function send_telegram( $data ) {
+        $token = $data['token'];
+        $chat_id = $data['chat_id'];
+        $text = $data['message'];
+        
+        if(empty($token) || empty($chat_id)) return;
+
+        // پروکسی (اگر تنظیم شده باشد)
+        $proxy = get_option('hub_telegram_proxy'); 
+        
+        $url = "https://api.telegram.org/bot$token/sendMessage";
+        $body = [
+            'chat_id' => $chat_id,
+            'text' => $text,
+            'parse_mode' => 'HTML'
+        ];
+
+        $args = [
+            'body' => json_encode($body),
+            'headers' => ['Content-Type' => 'application/json'],
+            'timeout' => 10
+        ];
+
+        if(!empty($proxy)) {
+            $args['proxy'] = $proxy; 
+        }
+
+        $res = wp_remote_post($url, $args);
+        
+        if ( is_wp_error( $res ) ) {
+            Hub_Logger::log( 'error', 'telegram', 'خطا: ' . $res->get_error_message() );
+        }
+    }
 }
