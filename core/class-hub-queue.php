@@ -6,7 +6,7 @@
 class Hub_Queue {
 
 	/**
-	 * Add an event to the queue.
+	 * Add an event to the queue and trigger immediate processing via Action Scheduler.
 	 *
 	 * @param string $event_type The type of event (e.g., order.created).
 	 * @param array  $payload    The data to send to n8n.
@@ -33,8 +33,17 @@ class Hub_Queue {
 		);
 
 		if ( $result ) {
-			Hub_Logger::log( "Event queued: $event_type", 'info', 'queue', $payload );
-			return $wpdb->insert_id;
+			$insert_id = $wpdb->insert_id;
+
+			// --- تغییر مهم: ایجاد اکشن آنی برای پردازش همین آیتم ---
+			// این خط باعث می‌شود Action Scheduler بلافاصله (یا در اولین فرصت)
+			// هوک 'hub_process_queue_item' را صدا بزند.
+			if ( function_exists( 'as_schedule_single_action' ) ) {
+				as_schedule_single_action( time(), 'hub_process_queue_item', array( 'id' => $insert_id ), 'hub_queue' );
+			}
+
+			Hub_Logger::log( "Event queued: $event_type (ID: $insert_id)", 'info', 'queue', $payload );
+			return $insert_id;
 		} else {
 			Hub_Logger::log( "Failed to queue event: $event_type", 'error', 'queue', $wpdb->last_error );
 			return false;
@@ -43,6 +52,7 @@ class Hub_Queue {
 
 	/**
 	 * Fetch pending items from the queue.
+	 * (این متد در حالت Async استفاده مستقیم ندارد اما برای دیباگ یا پردازش دسته‌ای در آینده مفید است)
 	 *
 	 * @param int $limit Number of items to fetch.
 	 * @return array Objects from the database.

@@ -3,158 +3,190 @@
 class Hub_Sender {
 
 	public static function init() {
-		// گوش دادن به صف (برای کارهای غیرضروری مثل تغییر وضعیت سفارش)
-		add_action( 'hub_process_queue_event', array( __CLASS__, 'handle_queued_event' ), 10, 2 );
+		// گوش دادن به هوک جدید که توسط صف صدا زده می‌شود (Async Worker)
+		add_action( 'hub_process_queue_item', array( __CLASS__, 'process_queue_item' ), 10, 1 );
 	}
 
-    // این متد توسط صف صدا زده می‌شود
-	public static function handle_queued_event( $type, $args ) {
-        self::dispatch( $type, $args );
-	}
+    /**
+     * WORKER: این متد توسط Action Scheduler اجرا می‌شود.
+     * شناسه صف را می‌گیرد، ارسال می‌کند و وضعیت دیتابیس را آپدیت می‌کند.
+     */
+    public static function process_queue_item( $queue_id ) {
+        global $wpdb;
+        $table = $wpdb->prefix . 'hub_queue';
 
-    // متد جدید: ارسال آنی (بدون صف)
-    public static function send_immediate( $type, $args ) {
-        self::dispatch( $type, $args );
+        // 1. دریافت آیتم از دیتابیس
+        $item = $wpdb->get_row( $wpdb->prepare( "SELECT * FROM $table WHERE id = %d", $queue_id ) );
+
+        // اگر قبلاً تکمیل شده یا وجود ندارد، خارج شو
+        if ( ! $item || $item->status === 'completed' ) {
+            return;
+        }
+
+        // 2. تغییر وضعیت به در حال پردازش
+        Hub_Queue::update_status( $queue_id, 'processing' );
+
+        $payload = json_decode( $item->payload, true );
+        $type = $item->event_type;
+
+        // 3. تلاش برای ارسال
+        $result = self::dispatch( $type, $payload );
+
+        // 4. آپدیت وضعیت نهایی بر اساس نتیجه ارسال
+        if ( $result === true ) {
+            Hub_Queue::update_status( $queue_id, 'completed' );
+        } else {
+            Hub_Queue::update_status( $queue_id, 'failed' );
+            // اگر نیاز باشد می‌توان اینجا لاجیک "تلاش مجدد" (Retry) را هم اضافه کرد
+        }
     }
 
-    // مغز متفکر ارسال (مشترک بین صف و ارسال آنی)
+    // ارسال آنی (بدون صف - مثلا برای دکمه تست)
+    public static function send_immediate( $type, $args ) {
+        return self::dispatch( $type, $args );
+    }
+
+    /**
+     * Dispatcher: توزیع‌کننده مرکزی
+     * تغییر: حالا مقدار true/false برمی‌گرداند
+     */
     private static function dispatch( $type, $args ) {
         switch ( $type ) {
             case 'n8n.send':
-                self::send_to_n8n( $args );
-                break;
+                return self::send_to_n8n( $args );
             case 'sms.send':
-                self::send_sms( $args );
-                break;
+                return self::send_sms( $args );
             case 'telegram.send':
-                self::send_telegram( $args );
-                break;
+                return self::send_telegram( $args );
+            default:
+                return false; 
         }
     }
 
 	private static function send_to_n8n( $data ) {
 		$url = $data['_webhook_url'] ?? '';
-		if ( empty( $url ) ) return;
+		if ( empty( $url ) ) return false;
 
 		unset( $data['_webhook_url'] );
+
+        // مدیریت حالت تست
+        $is_test = !empty($data['is_test_run']);
+        if(isset($data['is_test_run'])) unset($data['is_test_run']);
 
 		$args = array(
 			'body'        => json_encode( $data ),
 			'headers'     => array( 'Content-Type' => 'application/json' ),
-			'timeout'     => 15, // کاهش تایم‌اوت برای جلوگیری از کندی سایت در حالت آنی
+			'timeout'     => 20,
 			'blocking'    => true,
             'sslverify'   => false,
 		);
 
 		$res = wp_remote_post( $url, $args );
         
-        // لاگ کردن نتیجه
         if ( is_wp_error( $res ) ) {
             Hub_Logger::log( 'error', 'n8n', 'خطا در ارسال: ' . $res->get_error_message() );
+            return false;
+        } 
+        
+        // بررسی کد وضعیت HTTP
+        $code = wp_remote_retrieve_response_code($res);
+        if ( $code >= 200 && $code < 300 ) {
+            if($is_test) Hub_Logger::log( 'info', 'n8n', 'تست موفق n8n' );
+            return true;
         } else {
-            // فقط اگر موفق بود لاگ نکنیم که دیتابیس پر نشه، مگر دیباگ فعال باشه
-            // Hub_Logger::log( 'info', 'n8n', 'ارسال موفق به وب‌هوک' );
+            Hub_Logger::log( 'error', 'n8n', "خطای سرور مقصد ($code): " . wp_remote_retrieve_body($res) );
+            return false;
         }
 	}
 
 	private static function send_sms( $data ) {
-        // اطلاعات حساب
-        $user = $data['user'];
-        $pass = $data['pass'];
-        $from = $data['from'];
-        $to   = $data['mobile'];
-        $text = $data['message'];
+        $user = $data['user'] ?? '';
+        $pass = $data['pass'] ?? '';
+        $to   = $data['mobile'] ?? '';
+        $text = $data['message'] ?? '';
+        
+        if(empty($user) || empty($pass) || empty($to)) return false;
 
-        if(empty($user) || empty($pass) || empty($to)) return;
+        $api_url = "https://rest.payamak-panel.com/api/SendSMS/SendSMS";
+        $payload = array(
+            'username' => $user,
+            'password' => $pass,
+            'to' => $to,
+            'from' => $data['from'] ?? '',
+            'text' => $text,
+            'isflash' => false
+        );
 
-        // تشخیص پترن (اگر متن با @ شروع شود)
+        // لاجیک پترن (SharedLine)
         if ( strpos( $text, '@' ) === 0 ) {
-            // فرمت پترن: @Code@Var1;Var2
-            // مثال: @12345@Ali;12000
-            $parts = explode( '@', substr( $text, 1 ) ); // حذف @ اول
+            $parts = explode( '@', substr( $text, 1 ) );
             if ( count( $parts ) >= 2 ) {
-                $bodyId = $parts[0]; // کد پترن
-                $vars_raw = $parts[1]; // متغیرها
-                $vars = explode( ';', $vars_raw );
-                
-                // ارسال از طریق پترن (SharedLine)
                 $api_url = "https://rest.payamak-panel.com/api/SendSMS/BaseServiceNumber";
                 $payload = array(
                     'username' => $user,
                     'password' => $pass,
-                    'text' => implode(';', $vars), // مقادیر متغیرها با ; جدا شوند
+                    'text' => implode(';', explode(';', $parts[1])),
                     'to' => $to,
-                    'bodyId' => intval($bodyId)
+                    'bodyId' => intval($parts[0])
                 );
-            } else {
-                return; // فرمت غلط
             }
-        } else {
-            // ارسال معمولی
-            $api_url = "https://rest.payamak-panel.com/api/SendSMS/SendSMS";
-            $payload = array(
-                'username' => $user,
-                'password' => $pass,
-                'to' => $to,
-                'from' => $from,
-                'text' => $text,
-                'isflash' => false
-            );
         }
 
-        $args = array(
+        $res = wp_remote_post( $api_url, array(
             'body'    => $payload,
-            'headers' => array('Content-Type' => 'application/x-www-form-urlencoded'), // ملی پیامک معمولا فرم می‌گیرد
+            'headers' => array('Content-Type' => 'application/x-www-form-urlencoded'),
             'timeout' => 15
-        );
-
-        $res = wp_remote_post( $api_url, $args );
+        ));
         
         if ( is_wp_error( $res ) ) {
             Hub_Logger::log( 'error', 'sms', 'خطای اتصال: ' . $res->get_error_message() );
+            return false;
         } else {
-            $body = wp_remote_retrieve_body($res);
-            $json = json_decode($body, true);
-            // لاگ پاسخ ملی پیامک
-            if(isset($json['Value']) && strlen($json['Value']) > 15) {
-                 Hub_Logger::log( 'info', 'sms', 'ارسال موفق. شناسه: ' . $json['Value'] );
-            } elseif(isset($json['RetStatus']) && $json['RetStatus'] != 1) {
-                 Hub_Logger::log( 'error', 'sms', 'خطای پنل: ' . $json['StrRetStatus'] );
+            $json = json_decode(wp_remote_retrieve_body($res), true);
+            // بررسی موفقیت بر اساس پاسخ ملی پیامک
+            if( (isset($json['Value']) && strlen($json['Value']) > 5) || (isset($json['RetStatus']) && $json['RetStatus'] == 1) ) {
+                 return true;
+            } else {
+                 Hub_Logger::log( 'error', 'sms', 'خطای پنل: ' . ($json['StrRetStatus'] ?? 'Unknown Error') );
+                 return false;
             }
         }
 	}
 
     private static function send_telegram( $data ) {
-        $token = $data['token'];
-        $chat_id = $data['chat_id'];
-        $text = $data['message'];
+        $token = $data['token'] ?? '';
+        $chat_id = $data['chat_id'] ?? '';
         
-        if(empty($token) || empty($chat_id)) return;
+        if(empty($token) || empty($chat_id)) return false;
 
-        // پروکسی (اگر تنظیم شده باشد)
         $proxy = get_option('hub_telegram_proxy'); 
-        
         $url = "https://api.telegram.org/bot$token/sendMessage";
-        $body = [
-            'chat_id' => $chat_id,
-            'text' => $text,
-            'parse_mode' => 'HTML'
-        ];
-
+        
         $args = [
-            'body' => json_encode($body),
+            'body' => json_encode([
+                'chat_id' => $chat_id,
+                'text' => $data['message'],
+                'parse_mode' => 'HTML'
+            ]),
             'headers' => ['Content-Type' => 'application/json'],
-            'timeout' => 10
+            'timeout' => 15
         ];
 
-        if(!empty($proxy)) {
-            $args['proxy'] = $proxy; 
-        }
+        if(!empty($proxy)) $args['proxy'] = $proxy; 
 
         $res = wp_remote_post($url, $args);
         
         if ( is_wp_error( $res ) ) {
             Hub_Logger::log( 'error', 'telegram', 'خطا: ' . $res->get_error_message() );
+            return false;
+        }
+        
+        $body = json_decode(wp_remote_retrieve_body($res), true);
+        if ( isset($body['ok']) && $body['ok'] == true ) {
+            return true;
+        } else {
+            Hub_Logger::log( 'error', 'telegram', 'خطای API: ' . ($body['description'] ?? 'Unknown') );
+            return false;
         }
     }
 }
