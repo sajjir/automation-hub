@@ -448,3 +448,99 @@ textarea.msg-input {
 .input-url {
     flex-grow: 1; /* اینپوت تمام فضای خالی را بگیرد */
 }
+/* --- Global Toggles (Switch Style) --- */
+.global-toggles-card {
+    background: #fff;
+    border-left: 4px solid #2271b1; /* آبی وردپرس */
+}
+
+.toggle-switch {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 14px;
+    user-select: none;
+}
+
+.toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: relative;
+    display: inline-block;
+    width: 40px;
+    height: 20px;
+    background-color: #ccc;
+    transition: .4s;
+    border-radius: 34px;
+    margin-left: 10px;
+    vertical-align: middle;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 14px;
+    width: 14px;
+    left: 4px; /* وضعیت خاموش */
+    bottom: 3px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+}
+
+input:checked + .slider {
+    background-color: #2271b1;
+}
+
+input:checked + .slider:before {
+    transform: translateX(18px); /* حرکت به سمت راست */
+}
+
+/* --- Clickable Variable Tags --- */
+.variables-wrapper {
+    margin-top: 15px;
+    padding: 15px;
+    background: #f0f6fc;
+    border: 1px solid #cce5ff;
+    border-radius: 5px;
+}
+
+.var-tag {
+    display: inline-block;
+    background: #fff;
+    border: 1px solid #2271b1;
+    color: #2271b1;
+    padding: 2px 8px;
+    margin: 3px;
+    border-radius: 3px;
+    font-size: 11px;
+    cursor: pointer;
+    transition: all 0.2s;
+    font-family: monospace;
+}
+
+.var-tag:hover {
+    background: #2271b1;
+    color: #fff;
+    transform: translateY(-2px);
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.var-tag:active {
+    transform: translateY(0);
+}
+
+/* --- Harmony Tweaks --- */
+.hub-tab-content {
+    animation: fadeIn 0.3s ease-in-out;
+}
+@keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+.test-connection-btn {
+    margin-top: 8px !important;
+}

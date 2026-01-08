@@ -10,6 +10,24 @@ class Hub_Admin {
         $this->version = $version;
     }
 
+    /**
+     * متد راه‌انداز اصلی (Fix خطای Fatal Error)
+     * این متد کلاس را نمونه‌سازی کرده و هوک‌ها را متصل می‌کند.
+     */
+    public static function init() {
+        $plugin_name = 'automation-hub';
+        $version     = defined( 'HUB_VERSION' ) ? HUB_VERSION : '1.0.0';
+
+        $instance = new self( $plugin_name, $version );
+
+        add_action( 'admin_enqueue_scripts', array( $instance, 'enqueue_styles' ) );
+        add_action( 'admin_enqueue_scripts', array( $instance, 'enqueue_scripts' ) );
+        add_action( 'admin_menu', array( $instance, 'add_menu' ) );
+        
+        // هوک‌های AJAX برای تست اتصال
+        add_action( 'wp_ajax_hub_test_connection', array( $instance, 'ajax_test_connection' ) );
+    }
+
     public function enqueue_styles() {
         wp_enqueue_style( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'css/hub-admin.css', array(), $this->version, 'all' );
     }
@@ -48,23 +66,30 @@ class Hub_Admin {
         if($type === 'webhook') { // n8n
             $payload = ['is_test_run' => true, 'json_data' => ['message' => 'Hello from WordPress Automation Hub!']];
             $payload['_webhook_url'] = esc_url_raw($data['url']);
-            $result = Hub_Sender::send_immediate('n8n.send', $payload);
+            // استفاده از کلاس Sender برای ارسال واقعی
+            if ( class_exists( 'Hub_Sender' ) ) {
+                $result = Hub_Sender::send_immediate('n8n.send', $payload);
+            }
         } 
         elseif ($type === 'sms') {
-            $result = Hub_Sender::send_immediate('sms.send', [
-                'user' => sanitize_text_field($data['sms_user']),
-                'pass' => sanitize_text_field($data['sms_pass']),
-                'from' => sanitize_text_field($data['sms_from']),
-                'mobile' => sanitize_text_field($data['test_mobile']),
-                'message' => 'تست ارتباط اتوماسیون هاب ✅'
-            ]);
+            if ( class_exists( 'Hub_Sender' ) ) {
+                $result = Hub_Sender::send_immediate('sms.send', [
+                    'user' => sanitize_text_field($data['sms_user']),
+                    'pass' => sanitize_text_field($data['sms_pass']),
+                    'from' => sanitize_text_field($data['sms_from']),
+                    'mobile' => sanitize_text_field($data['test_mobile']),
+                    'message' => 'تست ارتباط اتوماسیون هاب ✅'
+                ]);
+            }
         } 
         elseif ($type === 'telegram') {
-            $result = Hub_Sender::send_immediate('telegram.send', [
-                'token' => sanitize_text_field($data['url']),
-                'chat_id' => sanitize_text_field($data['test_chat_id']),
-                'message' => 'تست ارتباط اتوماسیون هاب ✅'
-            ]);
+            if ( class_exists( 'Hub_Sender' ) ) {
+                $result = Hub_Sender::send_immediate('telegram.send', [
+                    'token' => sanitize_text_field($data['url']),
+                    'chat_id' => sanitize_text_field($data['test_chat_id']),
+                    'message' => 'تست ارتباط اتوماسیون هاب ✅'
+                ]);
+            }
         }
 
         if($result) wp_send_json_success('ارتباط با موفقیت برقرار شد! 🎉');
@@ -98,7 +123,7 @@ class Hub_Admin {
     }
 
     private function save_settings() {
-        // 1. ذخیره وضعیت جهانی (Global Toggles) - (اضافه شد ✅)
+        // 1. ذخیره وضعیت جهانی (Global Toggles)
         $globals = [
             'n8n'      => isset($_POST['global_n8n']) ? 1 : 0,
             'sms'      => isset($_POST['global_sms']) ? 1 : 0,
@@ -106,7 +131,7 @@ class Hub_Admin {
         ];
         update_option('hub_global_status', $globals);
 
-        // 2. ذخیره تنظیمات Auth (حفظ شد ✅)
+        // 2. ذخیره تنظیمات Auth
         if(isset($_POST['hub_auth_rate_limit'])) {
             $auth_settings = [
                 'active' => isset($_POST['hub_auth_active']) ? 1 : 0,
@@ -184,7 +209,7 @@ class Hub_Admin {
         }
         update_option( 'hub_rules', $rules );
         
-        // ذخیره پراکسی و کلید API
+        // ذخیره پراکسی
         if(isset($_POST['telegram_proxy'])) update_option('hub_telegram_proxy', sanitize_text_field($_POST['telegram_proxy']));
 
         echo '<div class="notice notice-success is-dismissible"><p>تنظیمات با موفقیت ذخیره شد.</p></div>';
