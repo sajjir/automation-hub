@@ -17,7 +17,7 @@ class Hub_Activator {
 		self::create_tables();
 		
 		// ذخیره نسخه دیتابیس برای مدیریت آپدیت‌های آینده
-		add_option( 'hub_db_version', HUB_DB_VERSION );
+add_option( 'hub_global_status', ['n8n'=>1, 'sms'=>1, 'telegram'=>1] );
 	}
 
 	/**
