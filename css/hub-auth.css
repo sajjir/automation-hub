@@ -28,12 +28,12 @@
     background: #2271b1;
     color: #fff;
     border: none;
-    border-radius: 8px;
+    border-radius: 33px;
     font-size: 15px;
     cursor: pointer;
     transition: 0.3s;
 }
-.hub-btn:hover { background: #135e96; }
+.hub-btn:hover { background: #f26926; }
 .hub-btn:disabled { opacity: 0.7; cursor: not-allowed; }
 .hub-link { display: block; margin-top: 15px; font-size: 12px; color: #888; text-decoration: none; }
 .hub-message { margin-top: 15px; padding: 10px; border-radius: 5px; font-size: 13px; display: none; }

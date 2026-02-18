@@ -54,51 +54,60 @@ class Hub_Bridge {
 	private static function process_rules( $trigger_type, $entity, $sub_trigger = null ) {
 		$rules = get_option( 'hub_rules', [] );
 		$webhooks = get_option( 'hub_webhooks', [] );
-        
-        // --- دریافت وضعیت جهانی (Global Switches) ---
-        $globals = get_option( 'hub_global_status', ['n8n'=>1, 'sms'=>1, 'telegram'=>1] );
-
 		$wh_map = []; foreach($webhooks as $wh) $wh_map[$wh['id']] = $wh;
 
-        Hub_Logger::log("Trigger: $trigger_type", 'info', 'bridge_debug');
+        Hub_Logger::log("Trigger: $trigger_type" . ($sub_trigger ? " ($sub_trigger)" : ""), 'info', 'bridge_debug');
 
 		foreach ( $rules as $rule ) {
 			if ( $rule['trigger'] !== $trigger_type ) continue;
 			
-            if ( $trigger_type === 'order_status' && !empty($rule['sub_trigger']) && $rule['sub_trigger'] !== $sub_trigger ) continue;
-            if ( $trigger_type === 'cf7_submit' && !empty($rule['cf7_form_id']) && (string)$rule['cf7_form_id'] !== (string)$sub_trigger ) continue;
+            if ( $trigger_type === 'order_status' ) {
+                if ( !empty($rule['sub_trigger']) && $rule['sub_trigger'] !== $sub_trigger ) continue;
+            }
+            if ( $trigger_type === 'cf7_submit' ) {
+                if ( !empty($rule['cf7_form_id']) && (string)$rule['cf7_form_id'] !== (string)$sub_trigger ) continue;
+            }
 
-            Hub_Logger::log("Matched Rule: " . ($rule['name'] ?? ''), 'success', 'bridge');
+            Hub_Logger::log("Matched Rule: " . ($rule['name'] ?? 'Unnamed'), 'success', 'bridge');
 
-            $msg_n8n_processed = self::parse_shortcodes( $rule['message_n8n']??'', $entity );
-            $msg_sms_processed = !empty($rule['active_sms']) ? self::parse_shortcodes( $rule['message_sms']??'', $entity ) : '';
-            $msg_tg_processed  = !empty($rule['active_tg']) ? self::parse_shortcodes( $rule['message_tg']??'', $entity ) : '';
+            $msg_n8n_raw = $rule['message_n8n'] ?? '';
+            $msg_sms_raw = $rule['message_sms'] ?? '';
+            $msg_tg_raw  = $rule['message_tg'] ?? '';
 
-            // --- 1. Telegram (Check Global Switch First) ---
+            $msg_n8n_processed = self::parse_shortcodes( $msg_n8n_raw, $entity );
+            $msg_sms_processed = !empty($rule['active_sms']) ? self::parse_shortcodes( $msg_sms_raw, $entity ) : '';
+            $msg_tg_processed  = !empty($rule['active_tg']) ? self::parse_shortcodes( $msg_tg_raw, $entity ) : '';
+
+            // --- 1. Telegram ---
             $tg_log_data = [];
-            if ( !empty($globals['telegram']) && !empty($rule['active_tg']) && !empty($rule['tg_bot_id']) && isset($wh_map[$rule['tg_bot_id']]) ) {
+            if ( !empty($rule['active_tg']) && !empty($rule['tg_bot_id']) && isset($wh_map[$rule['tg_bot_id']]) ) {
                 $bot_token = $wh_map[$rule['tg_bot_id']]['url'];
                 $chat_id = $rule['tg_chat_id'] ?? '';
+                
                 if ( !empty($chat_id) ) {
                     Hub_Sender::send_immediate( 'telegram.send', [ 'token' => $bot_token, 'chat_id' => $chat_id, 'message' => $msg_tg_processed ] );
                     $tg_log_data['status'] = 'sent';
                 }
             }
 
-            // --- 2. SMS (Check Global Switch First) ---
+            // --- 2. SMS ---
             $sms_log_data = [];
-            if ( !empty($globals['sms']) && !empty($rule['active_sms']) ) {
+            if ( !empty($rule['active_sms']) ) {
                 $target_num = '';
-                // لاجیک شماره یابی
-                if ( $trigger_type === 'auth_request' ) $target_num = $entity->phone;
-                elseif ( $trigger_type === 'cf7_submit' && !empty($rule['cf7_mobile_field']) && isset($entity->fields[$rule['cf7_mobile_field']]) ) {
+                
+                if ( $trigger_type === 'auth_request' ) {
+                    $target_num = $entity->phone;
+                } elseif ( $trigger_type === 'cf7_submit' ) {
+                    if ( !empty($rule['cf7_mobile_field']) && isset($entity->fields[$rule['cf7_mobile_field']]) ) {
                         $target_num = $entity->fields[$rule['cf7_mobile_field']];
-                }
-                elseif ( ($rule['sms_target'] ?? 'customer') === 'customer' ) {
-                    if ( is_a($entity, 'WC_Order') ) $target_num = $entity->get_billing_phone();
-                    elseif ( is_a($entity, 'WP_User') ) $target_num = get_user_meta($entity->ID, 'billing_phone', true);
+                    }
                 } else {
-                    $target_num = $rule['sms_custom_num'] ?? '';
+                    if ( ($rule['sms_target'] ?? 'customer') === 'customer' ) {
+                        if ( is_a($entity, 'WC_Order') ) $target_num = $entity->get_billing_phone();
+                        elseif ( is_a($entity, 'WP_User') ) $target_num = get_user_meta($entity->ID, 'billing_phone', true);
+                    } else {
+                        $target_num = $rule['sms_custom_num'] ?? '';
+                    }
                 }
 
                 $target_num = self::normalize_number($target_num);
@@ -113,12 +122,17 @@ class Hub_Bridge {
                 }
             }
 
-			// --- 3. n8n (Check Global Switch First) ---
-			if ( !empty($globals['n8n']) && !empty($rule['active_n8n']) ) {
+			// --- 3. n8n ---
+			if ( !empty($rule['active_n8n']) ) {
                 if ( !empty($rule['webhook_id']) && isset($wh_map[$rule['webhook_id']]) ) {
                     $payload = self::build_payload_n8n( $entity, $msg_n8n_processed );
-                    $payload['meta'] = [ 'rule_name' => $rule['name'], 'sms_sent' => !empty($sms_log_data) ];
+                    $payload['meta'] = [
+                        'rule_name' => $rule['name'],
+                        'trigger' => $trigger_type,
+                        'sms_sent' => !empty($sms_log_data),
+                    ];
                     $payload['_webhook_url'] = $wh_map[$rule['webhook_id']]['url'];
+                    
                     Hub_Sender::send_immediate( 'n8n.send', $payload );
                 }
 			}
