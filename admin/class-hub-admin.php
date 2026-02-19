@@ -420,7 +420,13 @@ class Hub_Admin {
                              <div class="condition-box cond-order_status" style="<?php echo ($trigger !== 'order_status') ? 'display:none' : ''; ?>">
                                 <select name="rules[<?php echo $index; ?>][sub_trigger]" class="sub-trigger-select full-width">
                                     <option value="">-- همه وضعیت‌ها --</option>
-                                    <?php foreach($wc_statuses as $k=>$v) echo "<option value='".str_replace('wc-', '', $k)."' ".selected($data['sub_trigger']??'', str_replace('wc-', '', $k), false).">$v</option>"; ?>
+                                    <?php 
+                                    $saved_sub = str_replace('wc-', '', $data['sub_trigger'] ?? '');
+                                    foreach($wc_statuses as $k=>$v) {
+                                        $opt_val = str_replace('wc-', '', $k);
+                                        echo "<option value='{$opt_val}' ".selected($saved_sub, $opt_val, false).">$v</option>"; 
+                                    }
+                                    ?>
                                 </select>
                             </div>
 

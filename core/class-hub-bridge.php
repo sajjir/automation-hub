@@ -29,8 +29,9 @@ class Hub_Bridge {
         self::process_rules( 'cf7_submit', $data, (string)$contact_form->id() );
     }
 
-	public static function handle_order_status( $order_id, $from, $to, $order ) { 
-        $status_slug = 'wc-' . $to; 
+public static function handle_order_status( $order_id, $from, $to, $order ) { 
+        // حذف پیشوند wc- برای اطمینان از یکپارچگی با مقادیر ذخیره شده در دیتابیس
+        $status_slug = str_replace('wc-', '', $to); 
         self::process_rules( 'order_status', $order, $status_slug ); 
     }
     
@@ -62,7 +63,11 @@ class Hub_Bridge {
 			if ( $rule['trigger'] !== $trigger_type ) continue;
 			
             if ( $trigger_type === 'order_status' ) {
-                if ( !empty($rule['sub_trigger']) && $rule['sub_trigger'] !== $sub_trigger ) continue;
+                // پاک‌سازی پیشوند wc- از دیتای ذخیره شده قدیمی برای مقایسه کاملاً دقیق
+                $saved_sub = str_replace('wc-', '', $rule['sub_trigger'] ?? '');
+                $current_sub = str_replace('wc-', '', $sub_trigger ?? '');
+                
+                if ( !empty($saved_sub) && $saved_sub !== $current_sub ) continue;
             }
             if ( $trigger_type === 'cf7_submit' ) {
                 if ( !empty($rule['cf7_form_id']) && (string)$rule['cf7_form_id'] !== (string)$sub_trigger ) continue;
