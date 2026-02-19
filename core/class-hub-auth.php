@@ -110,7 +110,10 @@ class Hub_Auth {
                     <input type="email" id="hub-email" placeholder="ایمیل (example@gmail.com)" dir="ltr">
                 </div>
 
-                <button type="button" id="hub-btn-register" class="hub-btn">ثبت اطلاعات و ورود</button>
+<button type="button" id="hub-btn-register" class="hub-btn">ثبت اطلاعات و ورود</button>
+                <div class="hub-footer-row">
+                    <a href="#" id="hub-btn-cancel-register" class="hub-link-back">انصراف و تغییر شماره</a>
+                </div>
             </div>
 
             <div id="hub-message" class="hub-message"></div>

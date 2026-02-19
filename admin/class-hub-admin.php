@@ -378,6 +378,9 @@ class Hub_Admin {
         $vars_html .= '<div class="var-list trigger-guide guide-order_status guide-order_created" style="display:none">';
         $vars_html .= '<span class="var-tag" data-insert="{full_name}">{full_name}</span><span class="var-tag" data-insert="{order_id}">{order_id}</span><span class="var-tag" data-insert="{total}">{total}</span>';
         $vars_html .= '</div>';
+        $vars_html .= '<div class="var-list trigger-guide guide-user_register" style="display:none">';
+        $vars_html .= '<span class="var-tag" data-insert="{full_name}">{full_name}</span><span class="var-tag" data-insert="{first_name}">{first_name}</span><span class="var-tag" data-insert="{phone}">{phone}</span><span class="var-tag" data-insert="{email}">{email}</span>';
+        $vars_html .= '</div>';
 
         $vars_html .= '<div class="trigger-guide guide-cf7_submit shortcode-guide" style="display:none">';
         $vars_html .= '<strong>💡 راهنمای فرم تماس:</strong><br>';

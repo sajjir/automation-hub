@@ -224,7 +224,20 @@ public static function handle_order_status( $order_id, $from, $to, $order ) {
         if ( is_a( $entity, 'WC_Order' ) ) {
              return self::parse_wc_shortcodes($text, $entity);
         }
-        
+        // 4. User Register
+        if ( is_a( $entity, 'WP_User' ) ) {
+            $full_name = trim($entity->first_name . ' ' . $entity->last_name);
+            if(empty($full_name)) $full_name = 'کاربر';
+            
+            $vars = [
+                '{first_name}' => $entity->first_name,
+                '{last_name}'  => $entity->last_name,
+                '{full_name}'  => $full_name,
+                '{email}'      => $entity->user_email,
+                '{phone}'      => get_user_meta($entity->ID, 'billing_phone', true) ?: $entity->user_login,
+            ];
+            return str_replace(array_keys($vars), array_values($vars), $text);
+        }
         return $text;
     }
 

@@ -147,7 +147,13 @@ jQuery(document).ready(function($) {
         $stepPhone.fadeIn();
         $msg.hide();
     });
-
+$('#hub-btn-cancel-register').on('click', function(e) {
+        e.preventDefault();
+        $stepRegister.hide();
+        $stepPhone.fadeIn();
+        $msg.hide();
+        $phoneInput.val('').focus(); // خالی کردن شماره قبلی
+    });
     function showMsg(text, type) {
         $msg.removeClass('success error').addClass(type).text(text).slideDown();
     }
