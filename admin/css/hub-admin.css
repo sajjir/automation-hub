@@ -448,3 +448,44 @@ textarea.msg-input {
 .input-url {
     flex-grow: 1; /* اینپوت تمام فضای خالی را بگیرد */
 }
+/* ... [حفظ کردن تمام استایل‌های قبلی در این قسمت] ... */
+
+/* Hub Admin Modern UI - Complete Version */
+/* (محتوای قبلی فایل را اینجا نگه دارید. من فقط اضافات را می‌دهم تا جایگزین نکنید.) */
+
+/* ------------------------------------------- */
+/* NEW STYLES FOR DYNAMIC ACTIONS & CONDITIONS */
+/* ------------------------------------------- */
+
+.action-card {
+    background: #ffffff;
+    border: 1px solid #dcdcde;
+    border-radius: var(--hub-radius);
+    padding: 15px;
+    padding-top: 35px; /* فضا برای دکمه‌های کنترلی گوشه */
+    box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+}
+
+.action-card:hover {
+    border-color: var(--hub-primary);
+}
+
+.condition-row select,
+.condition-row input {
+    font-size: 13px !important;
+    padding: 4px 8px !important;
+    min-height: 30px;
+}
+
+.conditions-wrapper {
+    transition: all 0.3s ease;
+}
+
+.duplicate-action:hover {
+    color: var(--hub-primary) !important;
+    transform: scale(1.1);
+}
+
+.remove-action:hover {
+    transform: scale(1.1);
+}

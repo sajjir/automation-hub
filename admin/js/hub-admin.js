@@ -1,190 +1,132 @@
 jQuery(document).ready(function($) {
     
-    // --- 1. مدیریت اتصالات ---
-    $(document).on('change', '.input-type', function() {
+    // --- مدیریت اتصالات (دست نخورده از قبل) ---
+    $(document).on('change', '.conn-type-selector', function() {
         var type = $(this).val();
-        var row = $(this).closest('.repeater-row');
-        
-        // مخفی کردن همه فیلدها ابتدا
-        row.find('.field-group').hide();
-        
-        if(type === 'melipayamak') {
-            row.find('.field-sms').css('display', 'flex');
+        var row = $(this).closest('.repeater-row, .webhook-row');
+        row.find('.conn-fields').hide();
+        if(type === 'sms' || type === 'melipayamak') {
+            row.find('.field-sms').show();
         } else {
-            // نمایش فیلد URL (مشترک بین n8n و تلگرام)
-            var urlField = row.find('.field-url');
-            urlField.css('display', 'flex');
-
-            // اگر نوع webhook بود دکمه تست نمایش داده شود
-            if (type === 'webhook') {
-                urlField.find('.btn-test-conn').show();
-                urlField.find('.input-url').attr('placeholder', 'https://...');
-            } else { // telegram
-                urlField.find('.btn-test-conn').hide();
-                urlField.find('.input-url').attr('placeholder', 'Bot Token');
-            }
+            row.find('.field-webhook').show();
         }
     });
 
-    $('#add-webhook').on('click', function(e) {
+    $('#add-webhook-btn').on('click', function(e) {
         e.preventDefault();
-        var tpl = $('#webhook-template').html().replace(/INDEX/g, $('.webhook-row').length);
-        $('#webhooks-container').append(tpl);
-        $('#webhooks-container .webhook-row:last .input-type').trigger('change');
+        var clone = $('.webhook-row').first().clone();
+        clone.find('input').val('');
+        $('#webhooks-container').append(clone);
     });
 
-    // --- مدیریت دکمه تست اتصال (URL Ping) ---
-    $(document).on('click', '.btn-test-conn', function(e) {
+    // --- مدیریت سناریوها (جدید) ---
+    function getNextRuleIndex() {
+        return $('.rule-row').length;
+    }
+
+    // افزودن سناریو جدید
+    $('#add-rule-btn').on('click', function(e) {
         e.preventDefault();
-        var btn = $(this);
-        var input = btn.siblings('.input-url');
-        var url = input.val();
-
-        if(!url) { alert('لطفاً آدرس URL را وارد کنید.'); return; }
-
-        btn.addClass('updating-message').text('⏳');
-
-        $.post(ajaxurl, {
-            action: 'hub_test_connection',
-            nonce: $('#_wpnonce').val(),
-            url: url
-        }, function(res) {
-            btn.removeClass('updating-message').text('🔗 تست');
-            if(res.success) {
-                alert('✅ ' + res.data);
-            } else {
-                alert('❌ ' + res.data);
-            }
-        }).fail(function() {
-            btn.removeClass('updating-message').text('🔗 تست');
-            alert('❌ خطای سرور');
-        });
+        var tpl = wp.template('rule-container');
+        var html = tpl({ rule_idx: getNextRuleIndex() });
+        $('#rules-container').append(html);
     });
 
-    // --- 2. مدیریت سناریوها ---
-    $('#add-rule').on('click', function(e) {
-        e.preventDefault();
-        var tpl = $('#rule-template').html().replace(/INDEX/g, $('.rule-row').length);
-        var newRow = $(tpl);
-        $('#rules-container').append(newRow);
-        $('.no-data-msg').remove();
-        initLogic();
-        updateTriggerUI(newRow); // بروزرسانی UI سطر جدید
-        newRow.find('.rule-header').trigger('click');
-        $('html, body').animate({ scrollTop: newRow.offset().top - 50 }, 500);
-    });
-
-    $(document).on('click', '.rule-header', function() {
-        $(this).closest('.rule-row').toggleClass('open');
-    });
-
-    $(document).on('click', '.rule-body', function(e) {
-        e.stopPropagation();
-    });
-
-    $(document).on('click', '.remove-row', function(e) {
-        e.stopPropagation();
+    // حذف سناریو
+    $(document).on('click', '.remove-rule', function() {
         if(confirm('آیا مطمئن هستید؟')) {
-            $(this).closest('.repeater-row').slideUp(300, function(){ $(this).remove(); });
+            $(this).closest('.rule-row').slideUp(300, function(){ $(this).remove(); });
         }
     });
 
-    $(document).on('input', '.rule-name-input', function() {
+    // سوییچ نمایش تریگر
+    $(document).on('change', '.trigger-selector', function() {
         var val = $(this).val();
-        var headerTitle = $(this).closest('.rule-row').find('.rule-name-display');
-        headerTitle.text(val.length > 0 ? val : 'سناریو جدید');
-    });
+        var box = $(this).closest('.rule-row').find('.trigger-meta-box');
+        box.find('.trigger-meta').hide();
+        box.find('.meta-' + val).show();
 
-    // --- 3. ویژگی جدید: تست آنی (سناریو) ---
-    $(document).on('click', '.test-action-btn', function(e) {
-        e.preventDefault();
-        var btn = $(this);
-        var container = btn.closest('.action-body');
-        
-        var type = btn.data('type');
-        var connectionId = container.find('.conn-select').val();
-        var message = container.find('.msg-input').val();
-        var customTarget = container.find('.sms-custom-input').val(); // فقط برای SMS
-        var chatId = container.find('.tg-chat-input').val(); // فقط برای تلگرام
-
-        if(!connectionId) { alert('لطفاً ابتدا اتصال (پنل/وب‌هوک) را انتخاب کنید.'); return; }
-        
-        btn.addClass('updating-message').text('در حال ارسال...');
-
-        $.post(ajaxurl, {
-            action: 'hub_test_scenario',
-            nonce: $('#_wpnonce').val(), // خواندن نانس از فیلد hidden وردپرس
-            type: type,
-            connection_id: connectionId,
-            message: message,
-            custom_target: customTarget,
-            chat_id: chatId
-        }, function(res) {
-            btn.removeClass('updating-message').text('تست آنی ⚡');
-            if(res.success) {
-                alert('✅ ' + res.data);
-            } else {
-                alert('❌ خطا: ' + res.data);
-            }
-        }).fail(function() {
-            btn.removeClass('updating-message').text('تست آنی ⚡');
-            alert('❌ خطای ارتباط با سرور.');
-        });
-    });
-
-    // --- 4. لاجیک شرطی و نمایش تریگرها ---
-
-    // تابع جدید برای مدیریت نمایش فیلدها بر اساس تریگر
-    function updateTriggerUI(row) {
-        var trigger = row.find('.trigger-select').val();
-
-        // 1. نمایش/مخفی کردن شرط‌های خاص (ساب تریگرها)
-        row.find('.condition-box').hide();
-        row.find('.cond-' + trigger).show();
-
-        // 2. نمایش راهنمای شورت‌کد مربوطه
-        row.find('.trigger-guide').hide();
-
-        // نگاشت تریگر به کلاس راهنما
-        if(trigger === 'order_status' || trigger === 'order_created') {
-            row.find('.guide-order_status').show();
+        // مخفی کردن کاندیشن‌ها برای مواردی که Order نیستند
+        if(val !== 'order_status' && val !== 'order_created') {
+            $(this).closest('.rule-row').find('.conditions-wrapper').hide();
         } else {
-            row.find('.guide-' + trigger).show();
+            $(this).closest('.rule-row').find('.conditions-wrapper').show();
         }
-    }
-
-    function initLogic() {
-        // تغییرات تریگر
-        $('.trigger-select').off('change').on('change', function() {
-            updateTriggerUI($(this).closest('.rule-row'));
-        });
-
-        // اکشن‌های دیگر
-        $('.toggle-action').off('change').on('change', function() {
-            var col = $(this).closest('.action-col');
-            $(this).is(':checked') ? col.addClass('active') : col.removeClass('active');
-        }).trigger('change');
-
-        $('.sms-target-select').off('change').on('change', function() {
-            var input = $(this).siblings('.sms-custom-input');
-            $(this).val() === 'custom' ? input.show() : input.hide();
-        }).trigger('change');
-    }
-
-    $(document).on('click', '.var-tag', function() {
-        var textToInsert = $(this).data('insert');
-        var textarea = $(this).closest('.action-body').find('.msg-input');
-        var cursorPos = textarea.prop('selectionStart');
-        var v = textarea.val();
-        textarea.val(v.substring(0, cursorPos) + textToInsert + v.substring(cursorPos, v.length));
-        textarea.focus();
     });
 
-    initLogic();
-    $('.input-type').trigger('change');
+    // افزودن شرط
+    $(document).on('click', '.add-condition-btn', function() {
+        var ruleBox = $(this).closest('.rule-row');
+        var r_idx = ruleBox.data('index');
+        var c_idx = ruleBox.find('.condition-row').length;
+        var tpl = wp.template('condition-row');
+        ruleBox.find('.conditions-list').append(tpl({ rule_idx: r_idx, cond_idx: c_idx }));
+    });
 
-    // اجرا برای تمام سطرهای موجود هنگام لود
-    $('.rule-row').each(function(){
-        updateTriggerUI($(this));
+    // حذف شرط
+    $(document).on('click', '.remove-condition', function() {
+        $(this).closest('.condition-row').remove();
+    });
+
+    // افزودن اکشن
+    $(document).on('click', '.add-action-btn', function() {
+        var ruleBox = $(this).closest('.rule-row');
+        var r_idx = ruleBox.data('index');
+        var a_idx = ruleBox.find('.action-card').length;
+        var tpl = wp.template('action-row');
+        ruleBox.find('.actions-list').append(tpl({ rule_idx: r_idx, act_idx: a_idx }));
+    });
+
+    // حذف اکشن
+    $(document).on('click', '.remove-action', function() {
+        if(confirm('حذف شود؟')) {
+            $(this).closest('.action-card').slideUp(300, function(){ $(this).remove(); });
+        }
+    });
+
+    // تکثیر اکشن
+    $(document).on('click', '.duplicate-action', function() {
+        var card = $(this).closest('.action-card');
+        var ruleBox = card.closest('.rule-row');
+        var clone = card.clone();
+        
+        // اصلاح ایندکس‌های نام input ها
+        var r_idx = ruleBox.data('index');
+        var a_idx = ruleBox.find('.action-card').length; // ایندکس جدید
+        
+        clone.find('input, select, textarea').each(function() {
+            var name = $(this).attr('name');
+            if(name) {
+                var newName = name.replace(/\[actions\]\[\d+\]/, '[actions][' + a_idx + ']');
+                $(this).attr('name', newName);
+            }
+        });
+
+        // ست کردن مقادیر انتخابی سلکت‌ها که در کلون از دست می‌روند
+        var originalSelects = card.find('select');
+        clone.find('select').each(function(index) {
+             $(this).val(originalSelects.eq(index).val());
+        });
+
+        ruleBox.find('.actions-list').append(clone);
+    });
+
+    // مخفی کردن کانکشن برای نوع ایمیل
+    $(document).on('change', '.action-type-select', function() {
+        var wrap = $(this).closest('.flex-row').find('.action-conn-wrapper');
+        if($(this).val() === 'email') { wrap.hide(); } else { wrap.show(); }
+    });
+
+    // راه‌اندازی منطق هنگام لود برای المان‌های موجود
+    $('.trigger-selector').trigger('change');
+    $('.action-type-select').trigger('change');
+    
+    // --- تب‌ها ---
+    $('.nav-tab-wrapper .nav-tab').on('click', function(e) {
+        e.preventDefault();
+        $('.nav-tab').removeClass('nav-tab-active');
+        $(this).addClass('nav-tab-active');
+        $('.hub-tab-content').hide();
+        $($(this).attr('href')).show();
     });
 });

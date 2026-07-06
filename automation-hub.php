@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Automation Hub (n8n Bridge)
  * Description: پل ارتباطی هوشمند و امن بین ووکامرس و n8n با سیستم صف و لاگ اختصاصی.
- * Version: 1.0.0
+ * Version: 1.1.0
  * Author: sajj.ir | هوش مرکزی
  * Text Domain: automation-hub
  * Domain Path: /languages
@@ -13,10 +13,10 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // تعریف ثابت‌های مسیر و نسخه
-define( 'HUB_VERSION', '1.0.0' );
+define( 'HUB_VERSION', '1.1.0' );
 define( 'HUB_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HUB_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'HUB_DB_VERSION', '1.0' );
+define( 'HUB_DB_VERSION', '1.1' );
 
 /**
  * 1. فعال‌سازی و غیرفعال‌سازی
@@ -29,7 +29,7 @@ register_activation_hook( __FILE__, 'hub_activate_plugin' );
 
 function hub_deactivate_plugin() {
     if ( function_exists( 'as_unschedule_action' ) ) {
-        as_unschedule_action( 'hub_process_queue_event' );
+        as_unschedule_action( 'hub_process_queue_item' );
     }
 }
 register_deactivation_hook( __FILE__, 'hub_deactivate_plugin' );
@@ -41,9 +41,10 @@ function hub_load_classes() {
     // هسته (Core)
     require_once HUB_PLUGIN_DIR . 'modules/logger/class-hub-logger.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-security.php';
+    require_once HUB_PLUGIN_DIR . 'core/class-hub-condition.php'; // <--- موتور شرط
     require_once HUB_PLUGIN_DIR . 'core/class-hub-queue.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-bridge.php';
-    require_once HUB_PLUGIN_DIR . 'core/class-hub-auth.php'; // <--- کلاس احراز هویت
+    require_once HUB_PLUGIN_DIR . 'core/class-hub-auth.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-sender.php';
     
     // رابط کاربری و ویجت‌ها
@@ -64,18 +65,18 @@ function hub_init_plugin() {
     load_plugin_textdomain( 'automation-hub', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 
     // ب) شروع به کار ماژول‌ها
-    if ( class_exists( 'Hub_Bridge' ) ) Hub_Bridge::init(); // گوش دادن به رویدادها
-    if ( class_exists( 'Hub_Admin' ) ) Hub_Admin::init();   // ساخت منوی ادمین
-    if ( class_exists( 'Hub_Auth' ) ) Hub_Auth::init();     // <--- سیستم لاگین (حیاتی برای شورت‌کد)
+    if ( class_exists( 'Hub_Bridge' ) ) Hub_Bridge::init(); 
+    if ( class_exists( 'Hub_Admin' ) ) Hub_Admin::init();   
+    if ( class_exists( 'Hub_Auth' ) ) Hub_Auth::init();     
     
     // ج) ویجت داشبورد
     if ( class_exists( 'Hub_Widget' ) ) {
         new Hub_Widget();
     }
 
-    // د) راه‌اندازی صف (با اولویت پایین‌تر برای اطمینان از اکشن اسکجولر)
+    // د) راه‌اندازی صف 
     if ( class_exists( 'Hub_Sender' ) && class_exists( 'ActionScheduler' ) ) {
         Hub_Sender::init();
     }
 }
-add_action( 'init', 'hub_init_plugin', 20 ); // اولویت ۲۰ حیاتی است
+add_action( 'init', 'hub_init_plugin', 20 );
