@@ -2,7 +2,7 @@
 /**
  * Plugin Name: Automation Hub (n8n Bridge)
  * Description: پل ارتباطی هوشمند و امن بین ووکامرس و n8n با سیستم صف و لاگ اختصاصی.
- * Version: 1.1.0
+ * Version: 1.1.1
  * Author: sajj.ir | هوش مرکزی
  * Text Domain: automation-hub
  * Domain Path: /languages
@@ -13,14 +13,11 @@ if ( ! defined( 'ABSPATH' ) ) {
 }
 
 // تعریف ثابت‌های مسیر و نسخه
-define( 'HUB_VERSION', '1.1.0' );
+define( 'HUB_VERSION', '1.1.1' );
 define( 'HUB_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
 define( 'HUB_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'HUB_DB_VERSION', '1.1' );
+define( 'HUB_DB_VERSION', '1.1.1' );
 
-/**
- * 1. فعال‌سازی و غیرفعال‌سازی
- */
 function hub_activate_plugin() {
     require_once HUB_PLUGIN_DIR . 'core/class-hub-activator.php';
     Hub_Activator::activate();
@@ -34,14 +31,12 @@ function hub_deactivate_plugin() {
 }
 register_deactivation_hook( __FILE__, 'hub_deactivate_plugin' );
 
-/**
- * 2. بارگذاری کلاس‌ها (فقط اینکلود کردن، بدون اجرا)
- */
 function hub_load_classes() {
     // هسته (Core)
     require_once HUB_PLUGIN_DIR . 'modules/logger/class-hub-logger.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-security.php';
-    require_once HUB_PLUGIN_DIR . 'core/class-hub-condition.php'; // <--- موتور شرط
+    require_once HUB_PLUGIN_DIR . 'core/class-hub-activator.php'; // ضروری برای maybe_upgrade
+    require_once HUB_PLUGIN_DIR . 'core/class-hub-condition.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-queue.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-bridge.php';
     require_once HUB_PLUGIN_DIR . 'core/class-hub-auth.php';
@@ -57,24 +52,22 @@ function hub_load_classes() {
 }
 add_action( 'plugins_loaded', 'hub_load_classes' );
 
-/**
- * 3. راه‌اندازی منطق (روی هوک init برای اطمینان از لود شدن وردپرس)
- */
 function hub_init_plugin() {
-    // الف) لود کردن زبان (رفع خطای _load_textdomain_just_in_time)
     load_plugin_textdomain( 'automation-hub', false, dirname( plugin_basename( __FILE__ ) ) . '/languages' );
 
-    // ب) شروع به کار ماژول‌ها
+    // ارتقاء خودکار جداول پایگاه داده در صورت تغییر نسخه
+    if ( class_exists( 'Hub_Activator' ) ) {
+        Hub_Activator::maybe_upgrade();
+    }
+
     if ( class_exists( 'Hub_Bridge' ) ) Hub_Bridge::init(); 
     if ( class_exists( 'Hub_Admin' ) ) Hub_Admin::init();   
     if ( class_exists( 'Hub_Auth' ) ) Hub_Auth::init();     
     
-    // ج) ویجت داشبورد
     if ( class_exists( 'Hub_Widget' ) ) {
         new Hub_Widget();
     }
 
-    // د) راه‌اندازی صف 
     if ( class_exists( 'Hub_Sender' ) && class_exists( 'ActionScheduler' ) ) {
         Hub_Sender::init();
     }

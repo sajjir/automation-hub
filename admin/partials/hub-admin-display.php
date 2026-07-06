@@ -6,7 +6,6 @@ $wc_statuses = function_exists('wc_get_order_statuses') ? wc_get_order_statuses(
 $cf7_forms   = class_exists('Hub_Admin') ? (new Hub_Admin())->get_cf7_forms() : []; 
 $auth_settings = wp_parse_args(get_option('hub_auth_settings', []), ['active'=>0, 'unified_login'=>0, 'redirect_url'=>'', 'rate_limit'=>120]);
 
-// چک کردن دیتای قدیمی
 $has_old_data = false;
 if(!empty($rules)) {
     foreach($rules as $r) {
@@ -23,7 +22,7 @@ if(!empty($rules)) {
     <hr class="wp-header-end">
     
     <?php if($has_old_data): ?>
-    <div class="notice notice-warning"><p><strong>توجه:</strong> نسخه جدید موتور سناریوها منتشر شد. شما سناریوهایی با فرمت قدیمی دارید. لازم است سناریوهای قبلی را دوباره از نو (با دکمه افزودن سناریو) بسازید و قدیمی‌ها را پاک کنید.</p></div>
+    <div class="notice notice-warning"><p><strong>توجه:</strong> نسخه جدید موتور سناریوها نصب شد و شما سناریوهایی با فرمت قدیمی دارید. لازم است سناریوهای جدید بسازید. به محض اولین کلیک روی «ذخیره تنظیمات»، سناریوهای قدیمیِ منقضی پاک خواهند شد.</p></div>
     <?php endif; ?>
 
     <form method="post" action="">
@@ -53,7 +52,7 @@ if(!empty($rules)) {
                 <?php 
                 if(!empty($rules)) {
                     foreach($rules as $r_idx => $rule) {
-                        if(!isset($rule['actions'])) continue; // Skip old rules in UI rendering to avoid errors
+                        if(!isset($rule['actions'])) continue;
                         include plugin_dir_path(__FILE__) . 'tmpl-rule.php';
                     }
                 }
@@ -88,6 +87,9 @@ if(!empty($rules)) {
                                 <input type="text" name="sms_pass[]" value="<?php echo esc_attr($wh['sms_pass']??''); ?>" placeholder="رمز عبور">
                                 <input type="text" name="sms_from[]" value="<?php echo esc_attr($wh['sms_from']??''); ?>" placeholder="شماره فرستنده">
                             </div>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <button type="button" class="button button-secondary button-small test-connection-btn">تست اتصال ⚡</button>
                         </div>
                     </div>
                     <?php endforeach; ?>
@@ -197,7 +199,7 @@ if(!empty($rules)) {
                     <option value="email">ایمیل</option>
                 </select>
             </div>
-            <div style="flex:1;" class="action-conn-wrapper">
+            <div class="action-conn-wrapper" style="flex:1;">
                 <label>اتصال مبدا:</label>
                 <select name="rules[{{data.rule_idx}}][actions][{{data.act_idx}}][connection_id]" class="full-width">
                     <option value="">-- انتخاب --</option>

@@ -29,8 +29,81 @@ class Hub_Admin {
     }
 
     public static function handle_test_connection() {
-        // بدنه این متد مثل گذشته برای ارتباط سبک
-        wp_send_json_success("OK");
+        // تأییدیه امنیتی
+        if ( ! check_ajax_referer( 'hub_save_action', 'nonce', false ) && ! current_user_can( 'manage_options' ) ) {
+            wp_send_json_error( 'عدم دسترسی' );
+        }
+
+        $type = sanitize_text_field( $_POST['type'] ?? '' );
+        
+        if ( $type === 'webhook' ) {
+            $url = esc_url_raw( $_POST['url'] ?? '' );
+            if ( empty($url) ) wp_send_json_error( 'آدرس URL وارد نشده است.' );
+            
+            $args = [
+                'body'        => wp_json_encode( [ 'test_connection' => true, 'message' => 'Hello from Automation Hub!' ] ),
+                'headers'     => [ 'Content-Type' => 'application/json' ],
+                'timeout'     => 15,
+                'sslverify'   => false,
+            ];
+            $response = wp_remote_post( $url, $args );
+
+            if ( is_wp_error( $response ) ) {
+                wp_send_json_error( 'خطا در ارتباط: ' . $response->get_error_message() );
+            }
+            $code = wp_remote_retrieve_response_code( $response );
+            if ( $code >= 200 && $code < 300 ) {
+                wp_send_json_success( "ارتباط با n8n/Webhook موفق بود! (کد: $code)" );
+            } else {
+                wp_send_json_error( "ارتباط برقرار شد اما خطا دریافت شد. (کد: $code)" );
+            }
+        } elseif ( $type === 'telegram' ) {
+            $token = sanitize_text_field( $_POST['url'] ?? '' );
+            if ( empty($token) ) wp_send_json_error( 'توکن ربات وارد نشده است.' );
+            
+            $url = "https://api.telegram.org/bot{$token}/getMe";
+            $proxy = get_option('hub_telegram_proxy'); 
+            $args = [ 'timeout' => 15 ];
+            if(!empty($proxy)) $args['proxy'] = $proxy; 
+            
+            $response = wp_remote_get( $url, $args );
+            
+            if ( is_wp_error( $response ) ) {
+                wp_send_json_error( 'خطا در اتصال به تلگرام: ' . $response->get_error_message() );
+            }
+            $body = json_decode( wp_remote_retrieve_body( $response ), true );
+            if ( isset($body['ok']) && $body['ok'] === true ) {
+                wp_send_json_success( "ارتباط موفق! متصل به ربات: " . $body['result']['first_name'] );
+            } else {
+                wp_send_json_error( 'توکن نامعتبر است یا ارتباط مسدود است.' );
+            }
+        } elseif ( $type === 'sms' || $type === 'melipayamak' ) {
+            $user = sanitize_text_field( $_POST['sms_user'] ?? '' );
+            $pass = sanitize_text_field( $_POST['sms_pass'] ?? '' );
+            
+            if ( empty($user) || empty($pass) ) wp_send_json_error( 'نام کاربری و رمز عبور پیامک را وارد کنید.' );
+            
+            // جای استفاده از درخواست ارسال پیام، موجودی رو میگیریم که تست بهتری است.
+            $api_url = "https://rest.payamak-panel.com/api/SendSMS/GetCredit";
+            $payload = [ 'username' => $user, 'password' => $pass ];
+            $response = wp_remote_post( $api_url, [
+                'body' => $payload,
+                'headers' => [ 'Content-Type' => 'application/x-www-form-urlencoded' ],
+                'timeout' => 15
+            ]);
+            
+            if ( is_wp_error( $response ) ) {
+                wp_send_json_error( 'خطا در اتصال به پنل پیامک: ' . $response->get_error_message() );
+            }
+            $json = json_decode( wp_remote_retrieve_body( $response ), true );
+            if ( isset($json['Value']) && is_numeric($json['Value']) ) {
+                wp_send_json_success( "ارتباط موفق! اعتبار حساب: " . number_format($json['Value']) . " ریال" );
+            } else {
+                wp_send_json_error( 'نام کاربری یا رمز عبور اشتباه است.' );
+            }
+        } else {
+            wp_send_json_error('نوع اتصال نامعتبر است.');
+        }
     }
 
 	public static function render_admin_page() {
@@ -42,14 +115,13 @@ class Hub_Admin {
 	}
 
     private static function save_settings() {
-        // ذخیره اتصالات (بدون تغییر منطق کلی)
         if(isset($_POST['webhook_name'])) {
             $clean_wh = [];
             foreach($_POST['webhook_name'] as $index => $name) {
                 if(!empty($name)) {
                     $type = sanitize_text_field($_POST['webhook_type'][$index]);
                     $clean_wh[] = [
-                        'id' => sanitize_title($name) . '_' . time() . rand(10,99), // Unique ID
+                        'id' => sanitize_title($name) . '_' . time() . rand(10,99),
                         'name' => sanitize_text_field($name),
                         'type' => $type,
                         'url' => sanitize_text_field($_POST['webhook_url'][$index] ?? ''), 
@@ -62,9 +134,11 @@ class Hub_Admin {
             update_option('hub_webhooks', $clean_wh);
         }
 
-        // سیستم جدید: ذخیره Rule ها با آرایه Nested
         if(isset($_POST['rules']) && is_array($_POST['rules'])) {
             $clean_rules = [];
+            $rule_count = count($_POST['rules']);
+            $action_counts = [];
+
             foreach($_POST['rules'] as $rule_index => $rule_data) {
                 if(empty($rule_data['trigger'])) continue;
 
@@ -104,14 +178,18 @@ class Hub_Admin {
                     }
                 }
 
+                $action_counts[] = count($parsed_rule['actions']);
                 $clean_rules[] = $parsed_rule;
             }
+            
+            // ثبت لاگ وضعیت دریافت داده‌ها در Backend برای بررسی صحت جریان
+            Hub_Logger::log("Saved $rule_count rules. Actions count per rule: [" . implode(', ', $action_counts) . "]", 'info', 'admin');
+            
             update_option('hub_rules', $clean_rules);
         } else {
-             update_option('hub_rules', []); // پاک شدن در صورت خالی بودن
+             update_option('hub_rules', []); 
         }
 
-        // تنظیمات دیگر
         $globals = ['n8n' => isset($_POST['global_n8n'])?1:0, 'sms' => isset($_POST['global_sms'])?1:0, 'telegram' => isset($_POST['global_telegram'])?1:0];
         update_option('hub_global_status', $globals);
         if(isset($_POST['telegram_proxy'])) update_option('hub_telegram_proxy', sanitize_text_field($_POST['telegram_proxy']));
