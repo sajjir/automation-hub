@@ -63,36 +63,45 @@
     <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
       
       <!-- Sidebar Navigation -->
-      <aside class="lg:col-span-3 space-y-2">
+      <aside id="admin-sidebar" class="transition-all duration-300 lg:col-span-3 space-y-2">
         <div class="bg-slate-900 border border-slate-800 rounded-3xl p-3.5">
-          <div class="text-[11px] font-bold text-slate-400 mb-2.5 px-2">ماژول‌های پنل مدیریت:</div>
+          <div id="sidebar-heading" class="text-[11px] font-bold text-slate-400 mb-2.5 px-2">ماژول‌های پنل مدیریت:</div>
           <nav class="space-y-1">
             <button onclick="switchTab('inbox')" id="tab-btn-inbox" class="w-full text-right p-3 rounded-2xl text-xs font-bold bg-purple-600 text-white flex justify-between items-center">
-              <span>💬 گفتگوی آنلاین و صندوق پیام‌ها</span>
+              <span class="tab-label">💬 گفتگوی آنلاین و صندوق پیام‌ها</span>
               <span class="w-2 h-2 rounded-full bg-rose-400 animate-pulse"></span>
             </button>
             <button onclick="switchTab('rules')" id="tab-btn-rules" class="w-full text-right p-3 rounded-2xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
-              <span>⚡ سناریوساز و اطلاع‌رسانی شرطی</span>
+              <span class="tab-label">⚡ سناریوساز و اطلاع‌رسانی شرطی</span>
               <span class="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded font-mono">3</span>
             </button>
             <button onclick="switchTab('crm')" id="tab-btn-crm" class="w-full text-right p-3 rounded-2xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
-              <span>🤝 خدمات مشتریان و نگهداشت (CRM)</span>
+              <span class="tab-label">🤝 خدمات مشتریان و نگهداشت (CRM)</span>
               <span class="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded font-mono">360°</span>
             </button>
             <button onclick="switchTab('ai_tools')" id="tab-btn-ai_tools" class="w-full text-right p-3 rounded-2xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
-              <span>🤖 هوش مصنوعی و ابزارهای فروش</span>
+              <span class="tab-label">🤖 هوش مصنوعی و ابزارهای فروش</span>
               <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded font-mono">PDP</span>
             </button>
             <button onclick="switchTab('mcp_queue')" id="tab-btn-mcp_queue" class="w-full text-right p-3 rounded-2xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
-              <span>🔌 اتصالات، MCP و مرکز صف و لاگ</span>
+              <span class="tab-label">🔌 اتصالات، MCP و مرکز صف و لاگ</span>
               <span class="text-[10px] bg-rose-500 text-white px-1.5 py-0.5 rounded-full font-mono">2</span>
             </button>
           </nav>
+
+          <!-- Collapse / Expand Button at Bottom -->
+          <div class="pt-2 mt-3 border-t border-slate-800/80">
+            <button onclick="toggleSidebarCollapse()" id="btn-sidebar-collapse" class="w-full flex items-center justify-between p-2 rounded-xl text-xs font-bold text-slate-400 hover:text-white bg-slate-950/60 hover:bg-slate-800 border border-slate-800">
+              <span id="collapse-btn-icon">▶</span>
+              <span id="collapse-btn-text" class="text-[11px]">جمع کردن سایدبار</span>
+              <span id="collapse-btn-sub" class="text-[9px] text-slate-500 font-mono">Collapse</span>
+            </button>
+          </div>
         </div>
       </aside>
 
       <!-- Main Admin Content -->
-      <main class="lg:col-span-9 space-y-6">
+      <main id="admin-main-content" class="transition-all duration-300 lg:col-span-9 space-y-6">
         
         <!-- TAB 1: UNIFIED LIVE INBOX -->
         <div id="content-inbox" class="bg-slate-900 border border-slate-800 rounded-3xl overflow-hidden shadow-xl">
@@ -222,10 +231,106 @@
           </div>
         </div>
 
-        <!-- TAB 5: MCP & QUEUE -->
-        <div id="content-mcp_queue" class="space-y-4 hidden">
-          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6">
-            <h3 class="text-base font-bold text-white mb-2">🔌 سرور MCP و صف تأیید انسانی (HITL)</h3>
+        <!-- TAB 5: MCP & EXTERNAL CHANNELS -->
+        <div id="content-mcp_queue" class="space-y-6 hidden">
+          <!-- External Integrations Header -->
+          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-6 flex flex-col md:flex-row items-center justify-between gap-4">
+            <div>
+              <h3 class="text-base font-bold text-white flex items-center gap-2">🔌 اتصالات، کانال‌های بیرونی و مرکز صف و لاگ</h3>
+              <p class="text-xs text-slate-400 mt-1">تنظیم پنل‌های پیامک ایرانی، وب‌هوک n8n و ربات تلگرام با دکمه‌های تست ارسال.</p>
+            </div>
+            <button onclick="alert('سناریوی استاندارد JSON برای ایمپورت در n8n دانلود شد.')" class="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-bold">
+              دانلود سناریوی n8n (JSON) 📥
+            </button>
+          </div>
+
+          <!-- 3 Integration Cards -->
+          <div class="grid grid-cols-1 lg:grid-cols-3 gap-4">
+            <!-- SMS Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <span class="font-bold text-white text-xs">📱 پنل پیامکی (SMS Gateway)</span>
+                <span class="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded">ایرانی</span>
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">درگاه پیامک:</label>
+                <select class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white">
+                  <option>کاوه‌نگار (Kavenegar)</option>
+                  <option>ملی‌پیامک (MeliPayamak)</option>
+                  <option>فراز اس‌ام‌اس (FarazSMS)</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">API Key / رمز عبور:</label>
+                <input type="password" value="kav_live_948192837482910293847" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-purple-300 font-mono">
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">کد پترن خدماتی:</label>
+                <input type="text" value="hub-order-notify-2026" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono">
+              </div>
+              <div class="pt-2 border-t border-slate-800">
+                <button onclick="alert('✅ پیامک تست پترنی با موفقیت به شماره 09121112233 ارسال شد.')" class="w-full bg-purple-600 hover:bg-purple-700 text-white py-2 rounded-xl text-xs font-bold">
+                  ارسال پیامک تست 🚀
+                </button>
+              </div>
+            </div>
+
+            <!-- n8n Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <span class="font-bold text-white text-xs">⚡ موتور ارتباط n8n</span>
+                <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded">متصل (18ms)</span>
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">آدرس وب‌هوک n8n:</label>
+                <input type="text" value="https://n8n.your-domain.com/webhook/automation-hub-listener" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-200 font-mono" dir="ltr">
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">Secret Token:</label>
+                <input type="text" value="hub_sec_92f8a1bc83e7401d" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-purple-300 font-mono" dir="ltr">
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">روش ارسال:</label>
+                <div class="bg-slate-950 p-2 rounded-xl text-xs text-slate-300 border border-slate-800 text-center font-bold">
+                  ارسال در صف پس‌زمینه (Background Queue)
+                </div>
+              </div>
+              <div class="pt-2 border-t border-slate-800">
+                <button onclick="alert('⚡ اتصال وب‌هوک n8n با موفقیت تایید شد (پاسخ 200 OK).')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-2 rounded-xl text-xs font-bold">
+                  تست پینگ اتصال (Test Connection)
+                </button>
+              </div>
+            </div>
+
+            <!-- Telegram Card -->
+            <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+              <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                <span class="font-bold text-white text-xs">🔔 ربات تلگرام / پیام‌رسان</span>
+                <span class="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded">Telegram Bot</span>
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">Bot Token:</label>
+                <input type="password" value="6829104829:AAHX7-829djq98wjsd8291kj" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-sky-300 font-mono" dir="ltr">
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">Admin Chat ID:</label>
+                <input type="text" value="108293847" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono" dir="ltr">
+              </div>
+              <div>
+                <label class="text-[11px] text-slate-400 block mb-1">نوع پروکسی:</label>
+                <input type="text" value="SOCKS5 Proxy (127.0.0.1:1080)" class="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-slate-400 font-mono" dir="ltr">
+              </div>
+              <div class="pt-2 border-t border-slate-800">
+                <button onclick="alert('🔔 پیام هشدار تستی به ربات تلگرام مدیر ارسال گردید.')" class="w-full bg-sky-600 hover:bg-sky-700 text-white py-2 rounded-xl text-xs font-bold">
+                  ارسال پیام تست به تلگرام 🔔
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- MCP Endpoint Box -->
+          <div class="bg-slate-900 border border-slate-800 rounded-3xl p-5 space-y-3">
+            <h4 class="text-xs font-bold text-white">آدرس سرور MCP اختصاصی سایت (Model Context Protocol)</h4>
             <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 text-xs font-mono text-purple-300" dir="ltr">
               https://your-store.com/wp-json/automation-hub/v1/mcp
             </div>
@@ -442,8 +547,40 @@
       }, 500);
     }
 
+    let isSidebarCollapsed = false;
+    function toggleSidebarCollapse() {
+      isSidebarCollapsed = !isSidebarCollapsed;
+      const aside = document.getElementById('admin-sidebar');
+      const main = document.getElementById('admin-main-content');
+      const heading = document.getElementById('sidebar-heading');
+      const icon = document.getElementById('collapse-btn-icon');
+      const text = document.getElementById('collapse-btn-text');
+      const sub = document.getElementById('collapse-btn-sub');
+      const labels = document.querySelectorAll('.tab-label');
 
-  <script>
+      if (isSidebarCollapsed) {
+        aside.classList.remove('lg:col-span-3');
+        aside.classList.add('lg:col-span-1');
+        main.classList.remove('lg:col-span-9');
+        main.classList.add('lg:col-span-11');
+        if (heading) heading.classList.add('hidden');
+        if (text) text.classList.add('hidden');
+        if (sub) sub.classList.add('hidden');
+        if (icon) icon.innerText = '◀';
+        labels.forEach(l => l.classList.add('hidden'));
+      } else {
+        aside.classList.remove('lg:col-span-1');
+        aside.classList.add('lg:col-span-3');
+        main.classList.remove('lg:col-span-11');
+        main.classList.add('lg:col-span-9');
+        if (heading) heading.classList.remove('hidden');
+        if (text) text.classList.remove('hidden');
+        if (sub) sub.classList.remove('hidden');
+        if (icon) icon.innerText = '▶';
+        labels.forEach(l => l.classList.remove('hidden'));
+      }
+    }
+
     function switchView(mode) {
       const vAdmin = document.getElementById('view-admin');
       const vStore = document.getElementById('view-store');

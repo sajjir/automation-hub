@@ -45,7 +45,12 @@ import {
   Edit3,
   Flame,
   Volume2,
-  ChevronLeft
+  ChevronLeft,
+  ChevronRight,
+  Lock,
+  Globe,
+  KeyRound,
+  Play
 } from 'lucide-react';
 
 export default function App() {
@@ -53,6 +58,7 @@ export default function App() {
   const [isDark, setIsDark] = useState(true);
   const [currentView, setCurrentView] = useState<'admin' | 'storefront'>('admin');
   const [activeAdminTab, setActiveAdminTab] = useState<'inbox' | 'rules' | 'crm' | 'ai_tools' | 'mcp_queue'>('inbox');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
   // Status
   const [n8nPing, setN8nPing] = useState<number>(18);
@@ -400,7 +406,14 @@ export default function App() {
     }
   ]);
 
-  const [queueLogs, setQueueLogs] = useState([
+  const [queueLogs, setQueueLogs] = useState<Array<{
+    id: number;
+    trigger: string;
+    status: string;
+    latency: string;
+    time: string;
+    payload: any;
+  }>>([
     { id: 1084, trigger: 'مذاکره قیمت در باکس محصول', status: 'Completed', latency: '142ms', time: 'لحظاتی پیش', payload: { action: 'ai_advisory', product_id: 489, query: 'تست شارژدهی باتری' } },
     { id: 1083, trigger: 'استعلام کد رهگیری پستی ووکامرس', status: 'Completed', latency: '95ms', time: '۳ دقیقه پیش', payload: { action: 'persian_wc_track', tracking_code: '284910293849102948291048' } },
     { id: 1082, trigger: 'درخواست کد تخفیف ۲۵٪ (منتظر تأیید مدیر)', status: 'Pending Approval', latency: '210ms', time: '۸ دقیقه پیش', payload: { action: 'issue_coupon_request', discount: 25, customer_id: 102 } },
@@ -408,6 +421,148 @@ export default function App() {
     { id: 1080, trigger: 'ارسال وب‌هوک به n8n (سبد خرید رها شده)', status: 'Failed', latency: '4800ms', time: '۲۲ دقیقه پیش', payload: { error: 'Timeout 5000ms reaching n8n worker' } }
   ]);
   const [selectedPayload, setSelectedPayload] = useState<any | null>(null);
+
+  // =========================================================================
+  // EXTERNAL CHANNELS & INTEGRATIONS STATE (TAB 5)
+  // =========================================================================
+  const [smsProvider, setSmsProvider] = useState<'kavenegar' | 'melipayamak' | 'farazsms'>('kavenegar');
+  const [smsApiKey, setSmsApiKey] = useState('kav_live_948192837482910293847');
+  const [smsPatternCode, setSmsPatternCode] = useState('hub-order-notify-2026');
+  const [smsSenderNumber, setSmsSenderNumber] = useState('500040019283');
+  const [smsTestPhone, setSmsTestPhone] = useState('09121112233');
+  const [isSendingSmsTest, setIsSendingSmsTest] = useState(false);
+
+  const [n8nWebhookUrl, setN8nWebhookUrl] = useState('https://n8n.your-domain.com/webhook/automation-hub-listener');
+  const [n8nSecretToken, setN8nSecretToken] = useState('hub_sec_92f8a1bc83e7401d');
+  const [isTestingN8n, setIsTestingN8n] = useState(false);
+  const [n8nDeliveryMode, setN8nDeliveryMode] = useState<'async_queue' | 'sync_realtime'>('async_queue');
+
+  const [telegramBotToken, setTelegramBotToken] = useState('6829104829:AAHX7-829djq98wjsd8291kj');
+  const [telegramAdminChatId, setTelegramAdminChatId] = useState('108293847');
+  const [telegramProxyType, setTelegramProxyType] = useState<'socks5' | 'direct' | 'mtproto'>('socks5');
+  const [telegramProxyUrl, setTelegramProxyUrl] = useState('socks5://127.0.0.1:1080');
+  const [isSendingTelegramTest, setIsSendingTelegramTest] = useState(false);
+
+  const [mcpBearerToken] = useState('hub_mcp_live_token_8829471928374928');
+  const [mcpTools, setMcpTools] = useState({
+    productSearch: true,
+    dynamicCoupon: true,
+    persianWCTracking: true,
+    crmTags: true
+  });
+  const [maxDiscountPercent, setMaxDiscountPercent] = useState<number>(20);
+
+  const handleSendTestSms = () => {
+    if (!smsTestPhone.trim()) {
+      showToast('⚠️ لطفاً شماره موبایل گیرنده تست را وارد کنید.');
+      return;
+    }
+    setIsSendingSmsTest(true);
+    setTimeout(() => {
+      setIsSendingSmsTest(false);
+      const providerLabel = smsProvider === 'kavenegar' ? 'کاوه‌نگار' : smsProvider === 'melipayamak' ? 'ملی‌پیامک' : 'فراز اس‌ام‌اس (IPPanel)';
+      const newLog = {
+        id: Math.floor(Math.random() * 900) + 1100,
+        trigger: `ارسال پیامک تست پترنی (${providerLabel})`,
+        status: 'Completed',
+        latency: '98ms',
+        time: 'لحظاتی پیش',
+        payload: {
+          provider: smsProvider,
+          recipient: smsTestPhone,
+          pattern_code: smsPatternCode,
+          sender: smsSenderNumber,
+          gateway_status: '200 Delivered to Telecom'
+        }
+      };
+      setQueueLogs(prev => [newLog, ...prev]);
+      showToast(`✅ پیامک تست با موفقیت از طریق درگاه ${providerLabel} به شماره ${smsTestPhone} ارسال شد.`);
+    }, 600);
+  };
+
+  const handleTestN8n = () => {
+    setIsTestingN8n(true);
+    setTimeout(() => {
+      setIsTestingN8n(false);
+      const ping = Math.floor(Math.random() * 8) + 14;
+      setN8nPing(ping);
+      const newLog = {
+        id: Math.floor(Math.random() * 900) + 1100,
+        trigger: 'تست پینگ وب‌هوک n8n',
+        status: 'Completed',
+        latency: `${ping}ms`,
+        time: 'لحظاتی پیش',
+        payload: {
+          webhook_url: n8nWebhookUrl,
+          response_code: 200,
+          ping_latency: `${ping}ms`,
+          handshake: 'Verified with Secret Token'
+        }
+      };
+      setQueueLogs(prev => [newLog, ...prev]);
+      showToast(`⚡ وب‌هوک n8n با موفقیت تایید شد و پاسخ 200 OK دریافت گردید (${ping}ms).`);
+    }, 500);
+  };
+
+  const handleSendTelegramTest = () => {
+    if (!telegramAdminChatId.trim()) {
+      showToast('⚠️ لطفاً شناسه چت ادمین (Admin Chat ID) را وارد کنید.');
+      return;
+    }
+    setIsSendingTelegramTest(true);
+    setTimeout(() => {
+      setIsSendingTelegramTest(false);
+      const newLog = {
+        id: Math.floor(Math.random() * 900) + 1100,
+        trigger: 'ارسال هشدار تستی به ربات تلگرام مدیر',
+        status: 'Completed',
+        latency: '215ms',
+        time: 'لحظاتی پیش',
+        payload: {
+          bot_token_masked: '6829***:AAHX***',
+          chat_id: telegramAdminChatId,
+          proxy: telegramProxyType,
+          message: '🔔 پیام تست هوشمند: ارتباط با سرور تلگرام پایدار است.'
+        }
+      };
+      setQueueLogs(prev => [newLog, ...prev]);
+      showToast(`🔔 پیام تست با موفقیت از طریق پروکسی به تلگرام مدیر (${telegramAdminChatId}) ارسال شد.`);
+    }, 600);
+  };
+
+  const handleReplayLog = (logItem: any) => {
+    const replayId = Math.floor(Math.random() * 900) + 1100;
+    const replayed = {
+      id: replayId,
+      trigger: `بازپخش (Replay): ${logItem.trigger}`,
+      status: 'Completed',
+      latency: '105ms',
+      time: 'هم‌اکنون',
+      payload: { ...logItem.payload, replayed_from: logItem.id }
+    };
+    setQueueLogs(prev => [replayed, ...prev]);
+    showToast(`🔄 رویداد #${logItem.id} مجدداً در صف پردازش قرار گرفت و با موفقیت شلیک شد.`);
+  };
+
+  const handleDownloadN8nWorkflow = () => {
+    const workflowObj = {
+      name: "Automation Hub Pro - WooCommerce Agentic Bridge",
+      nodes: [
+        { name: "Webhook Trigger", type: "n8n-nodes-base.webhook", parameters: { path: "automation-hub-listener", httpMethod: "POST" } },
+        { name: "MCP Tool Executor", type: "n8n-nodes-base.httpRequest", parameters: { url: "https://your-store.com/wp-json/automation-hub/v1/mcp" } },
+        { name: "Persian WC Tracking", type: "n8n-nodes-base.httpRequest", parameters: { url: "https://your-store.com/wp-json/automation-hub/v1/mcp/tracking" } },
+        { name: "Telegram Alert", type: "n8n-nodes-base.telegram", parameters: { operation: "sendMessage" } }
+      ]
+    };
+    const blob = new Blob([JSON.stringify(workflowObj, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'automation-hub-n8n-workflow.json';
+    a.click();
+    URL.revokeObjectURL(url);
+    showToast('📥 سناریوی آماده JSON مخصوص ایمپورت در n8n با موفقیت دانلود شد.');
+  };
 
   // =========================================================================
   // STOREFRONT DEMO & CHATBOT INTERACTIVE STATE
@@ -690,114 +845,147 @@ export default function App() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
 
             {/* Sidebar Navigation */}
-            <aside className="lg:col-span-3 space-y-3">
-              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3.5 shadow-sm">
-                <div className="text-[11px] font-bold text-slate-400 mb-3 px-2">ماژول‌های پنل مدیریت:</div>
+            <aside className={`transition-all duration-300 space-y-3 ${isSidebarCollapsed ? 'lg:col-span-1' : 'lg:col-span-3'}`}>
+              <div className="bg-slate-900 border border-slate-800 rounded-3xl p-3.5 shadow-sm transition-all">
+                <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} mb-3 px-1`}>
+                  {!isSidebarCollapsed ? (
+                    <span className="text-[11px] font-bold text-slate-400">ماژول‌های پنل مدیریت:</span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-purple-400 bg-purple-500/10 px-1.5 py-0.5 rounded">منو</span>
+                  )}
+                </div>
                 <nav className="space-y-1.5">
                   
                   {/* Tab 1: Live Inbox (Default) */}
                   <button
                     onClick={() => setActiveAdminTab('inbox')}
-                    className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
+                    title="گفتگوی آنلاین و صندوق پیام‌ها"
+                    className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all relative ${
                       activeAdminTab === 'inbox'
                         ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                         : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                       <MessageSquare size={17} />
-                      <span>گفتگوی آنلاین و صندوق پیام‌ها</span>
+                      {!isSidebarCollapsed && <span>گفتگوی آنلاین و صندوق پیام‌ها</span>}
                     </div>
                     {conversations.some(c => c.hasUnread) && (
-                      <span className="w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse"></span>
+                      <span className={`${isSidebarCollapsed ? 'absolute top-2 right-2' : ''} w-2.5 h-2.5 rounded-full bg-rose-400 animate-pulse`}></span>
                     )}
                   </button>
 
                   {/* Tab 2: Nested Rules & Notifications */}
                   <button
                     onClick={() => setActiveAdminTab('rules')}
-                    className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
+                    title="سناریوساز و اطلاع‌رسانی شرطی"
+                    className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all relative ${
                       activeAdminTab === 'rules'
                         ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                         : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                       <Zap size={17} />
-                      <span>سناریوساز و اطلاع‌رسانی شرطی</span>
+                      {!isSidebarCollapsed && <span>سناریوساز و اطلاع‌رسانی شرطی</span>}
                     </div>
-                    <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-md font-mono">{rules.length}</span>
+                    {!isSidebarCollapsed ? (
+                      <span className="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-md font-mono">{rules.length}</span>
+                    ) : (
+                      <span className="absolute -top-1 -right-1 text-[9px] bg-amber-500 text-slate-950 font-bold px-1 rounded-full">{rules.length}</span>
+                    )}
                   </button>
 
                   {/* Tab 3: CRM & Retention */}
                   <button
                     onClick={() => setActiveAdminTab('crm')}
-                    className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
+                    title="خدمات مشتریان و نگهداشت (CRM)"
+                    className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
                       activeAdminTab === 'crm'
                         ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                         : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                       <Users size={17} />
-                      <span>خدمات مشتریان و نگهداشت (CRM)</span>
+                      {!isSidebarCollapsed && <span>خدمات مشتریان و نگهداشت (CRM)</span>}
                     </div>
-                    <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md font-mono">360°</span>
+                    {!isSidebarCollapsed && (
+                      <span className="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded-md font-mono">360°</span>
+                    )}
                   </button>
 
                   {/* Tab 4: AI Widgets & PDP Box */}
                   <button
                     onClick={() => setActiveAdminTab('ai_tools')}
-                    className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
+                    title="هوش مصنوعی و ابزارهای فروش"
+                    className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
                       activeAdminTab === 'ai_tools'
                         ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                         : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                       <Sparkles size={17} />
-                      <span>هوش مصنوعی و ابزارهای فروش</span>
+                      {!isSidebarCollapsed && <span>هوش مصنوعی و ابزارهای فروش</span>}
                     </div>
-                    <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-md">PDP</span>
+                    {!isSidebarCollapsed && (
+                      <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded-md">PDP</span>
+                    )}
                   </button>
 
                   {/* Tab 5: MCP, Queue & HITL */}
                   <button
                     onClick={() => setActiveAdminTab('mcp_queue')}
-                    className={`w-full flex items-center justify-between p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all ${
+                    title="اتصالات، MCP و مرکز صف و لاگ"
+                    className={`w-full flex items-center ${isSidebarCollapsed ? 'justify-center' : 'justify-between'} p-3 rounded-2xl text-xs sm:text-sm font-bold transition-all relative ${
                       activeAdminTab === 'mcp_queue'
                         ? 'bg-purple-600 text-white shadow-lg shadow-purple-900/40'
                         : 'text-slate-300 hover:bg-slate-800'
                     }`}
                   >
-                    <div className="flex items-center gap-2.5">
+                    <div className={`flex items-center ${isSidebarCollapsed ? 'justify-center' : 'gap-2.5'}`}>
                       <Server size={17} />
-                      <span>اتصالات، MCP و مرکز صف و لاگ</span>
+                      {!isSidebarCollapsed && <span>اتصالات، MCP و مرکز صف و لاگ</span>}
                     </div>
                     {approvalCards.length > 0 && (
-                      <span className="text-[11px] bg-rose-500 text-white font-bold px-1.5 py-0.2 rounded-full">
+                      <span className={`${isSidebarCollapsed ? 'absolute -top-1 -right-1' : ''} text-[11px] bg-rose-500 text-white font-bold px-1.5 py-0.2 rounded-full`}>
                         {approvalCards.length}
                       </span>
                     )}
                   </button>
 
                 </nav>
-              </div>
 
-              {/* Status Box */}
-              <div className="bg-gradient-to-br from-purple-950/40 to-slate-900 border border-purple-800/30 rounded-3xl p-4 text-xs space-y-2">
-                <div className="flex items-center gap-2 text-purple-300 font-bold">
-                  <ShieldCheck size={16} />
-                  <span>سازگاری کامل با ژاکت</span>
+                {/* Collapse / Expand Toggle Button at Bottom of Sidebar */}
+                <div className="pt-2 mt-3 border-t border-slate-800/80">
+                  <button
+                    onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+                    title={isSidebarCollapsed ? 'باز کردن سایدبار' : 'جمع کردن سایدبار (افزایش فضا)'}
+                    className={`w-full flex items-center ${
+                      isSidebarCollapsed ? 'justify-center' : 'justify-between'
+                    } p-2.5 rounded-2xl text-xs font-bold transition-all bg-slate-950/60 hover:bg-slate-800 text-slate-400 hover:text-white border border-slate-800/60 shadow-sm`}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isSidebarCollapsed ? (
+                        <ChevronLeft size={16} className="text-purple-400" />
+                      ) : (
+                        <ChevronRight size={16} className="text-purple-400" />
+                      )}
+                      {!isSidebarCollapsed && (
+                        <span className="text-[11px] font-medium text-slate-300">جمع کردن منو</span>
+                      )}
+                    </div>
+                    {!isSidebarCollapsed && (
+                      <span className="text-[10px] text-slate-500 font-mono">Collapse</span>
+                    )}
+                  </button>
                 </div>
-                <p className="text-slate-400 leading-relaxed text-[11px]">
-                  کدها به صورت کاملاً ساختاریافته آماده ادغام در قالب‌های افزونه (`admin/partials/hub-admin-display.php` و `class-persian-wc.php`) هستند.
-                </p>
               </div>
             </aside>
 
             {/* Main Tab View Area */}
-            <main className="lg:col-span-9">
+            <main className={`transition-all duration-300 ${isSidebarCollapsed ? 'lg:col-span-11' : 'lg:col-span-9'}`}>
 
               {/* ------------------------------------------------------------- */}
               {/* TAB 1: UNIFIED LIVE INBOX (3-COLUMN WORKSPACE)                */}
@@ -1676,66 +1864,514 @@ export default function App() {
               )}
 
               {/* ------------------------------------------------------------- */}
-              {/* TAB 5: MCP SERVER, QUEUE & HITL APPROVALS                     */}
+              {/* TAB 5: MCP SERVER, EXTERNAL INTEGRATIONS & QUEUE HUB          */}
               {/* ------------------------------------------------------------- */}
               {activeAdminTab === 'mcp_queue' && (
                 <div className="space-y-6 animate-fadeIn">
                   
-                  {/* MCP Endpoint Box */}
-                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
-                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                      <div>
-                        <h3 className="text-base font-bold text-white flex items-center gap-2">
-                          <Server className="text-purple-400" size={18} />
-                          آدرس سرور MCP اختصاصی سایت (Model Context Protocol)
-                        </h3>
-                        <p className="text-xs text-slate-400 mt-1">جهت اتصال n8n به عنوان Provider برای ایجنت‌های هوش مصنوعی.</p>
+                  {/* Tab Top Header & Quick Actions */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <Server className="text-purple-400" size={20} />
+                        <h2 className="text-base font-black text-white">اتصالات، MCP و مرکز صف و لاگ (External Hub & MCP Engine)</h2>
                       </div>
+                      <p className="text-xs text-slate-400 mt-1">
+                        مدیریت یکپارچه درگاه‌های پیامک ایرانی، وب‌هوک n8n، ربات تلگرام، پروتکل MCP اختصاصی، ابزارهای REST و کارتابل تایید انسانی.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 shrink-0">
+                      <button
+                        onClick={handleDownloadN8nWorkflow}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 px-3.5 py-2 rounded-2xl text-xs font-bold transition-all flex items-center gap-2 shadow-sm"
+                      >
+                        <Download size={15} className="text-purple-400" />
+                        <span>دانلود سناریوی n8n (JSON)</span>
+                      </button>
 
                       <button
                         onClick={() => {
-                          setIsPinging(true);
-                          setTimeout(() => {
-                            setIsPinging(false);
-                            setN8nPing(Math.floor(Math.random() * 8) + 14);
-                            showToast('✅ اتصال به n8n بررسی شد و پینگ پایدار است.');
-                          }, 500);
+                          handleTestN8n();
+                          showToast('کلیه اتصالات بیرونی (SMS, n8n, Telegram) بررسی شدند.');
                         }}
-                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-xl text-xs font-bold"
+                        className="bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded-2xl text-xs font-bold transition-all shadow-md flex items-center gap-1.5"
                       >
-                        تست پینگ با n8n ⚡
+                        <Zap size={15} />
+                        <span>تست جامع اتصالات ⚡</span>
                       </button>
                     </div>
+                  </div>
 
-                    <div className="space-y-2">
-                      <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs">
-                        <code className="text-purple-300 font-mono flex-1 overflow-x-auto text-left" dir="ltr">
-                          https://your-store.com/wp-json/automation-hub/v1/mcp
-                        </code>
+                  {/* ========================================================= */}
+                  {/* 1. EXTERNAL CHANNELS & INTEGRATIONS (SMS, N8N, TELEGRAM)  */}
+                  {/* ========================================================= */}
+                  <div>
+                    <div className="flex items-center justify-between mb-3 px-1">
+                      <h3 className="text-xs font-bold text-slate-300 flex items-center gap-2">
+                        <Globe size={16} className="text-purple-400" />
+                        <span>تنظیمات کانال‌های بیرونی و اطلاع‌رسانی (External Channel Integrations):</span>
+                      </h3>
+                      <span className="text-[11px] text-emerald-400 font-semibold flex items-center gap-1">
+                        <CheckCircle2 size={13} />
+                        <span>کانال‌ها آنلاین و آماده ارسال</span>
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+                      
+                      {/* CARD 1: SMS Gateway Integration */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-purple-600/20 text-purple-400 flex items-center justify-center font-bold">
+                                <Phone size={16} />
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-white">پنل پیامکی (SMS Gateway)</h4>
+                                <span className="text-[10px] text-slate-400">ارسال پترنی و سریع OTP</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-bold">
+                              ایرانی / خدماتی
+                            </span>
+                          </div>
+
+                          {/* Provider Selector */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">انتخاب درگاه پیامک:</label>
+                            <select
+                              value={smsProvider}
+                              onChange={e => {
+                                setSmsProvider(e.target.value as any);
+                                showToast(`درگاه پیامک به ${e.target.value === 'kavenegar' ? 'کاوه‌نگار' : e.target.value === 'melipayamak' ? 'ملی‌پیامک' : 'فراز اس‌ام‌اس'} تغییر یافت.`);
+                              }}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-purple-600"
+                            >
+                              <option value="kavenegar">کاوه‌نگار (Kavenegar REST API)</option>
+                              <option value="melipayamak">ملی‌پیامک (MeliPayamak SOAP/REST)</option>
+                              <option value="farazsms">فراز اس‌ام‌اس / IPPanel (FarazSMS)</option>
+                            </select>
+                          </div>
+
+                          {/* API Key */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">کلید امن API Key / رمز عبور:</label>
+                            <div className="relative">
+                              <Lock size={13} className="absolute right-3 top-2.5 text-slate-500" />
+                              <input
+                                type="password"
+                                value={smsApiKey}
+                                onChange={e => setSmsApiKey(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-8 pl-3 py-1.5 text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-600"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Pattern Code & Sender Line */}
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <label className="text-[10px] text-slate-400 block mb-1">کد پترن خدماتی:</label>
+                              <input
+                                type="text"
+                                value={smsPatternCode}
+                                onChange={e => setSmsPatternCode(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-white font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block mb-1">شماره خط فرستنده:</label>
+                              <input
+                                type="text"
+                                value={smsSenderNumber}
+                                onChange={e => setSmsSenderNumber(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-[11px] text-slate-300 font-mono"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Test SMS Block */}
+                        <div className="pt-3 border-t border-slate-800/80 space-y-2">
+                          <label className="text-[10px] text-slate-400 block">شماره موبایل جهت تست پیامک:</label>
+                          <div className="flex gap-1.5">
+                            <input
+                              type="text"
+                              value={smsTestPhone}
+                              onChange={e => setSmsTestPhone(e.target.value)}
+                              placeholder="0912..."
+                              className="flex-1 bg-slate-950 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white font-mono text-center"
+                            />
+                            <button
+                              onClick={handleSendTestSms}
+                              disabled={isSendingSmsTest}
+                              className="bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 flex items-center gap-1"
+                            >
+                              {isSendingSmsTest ? (
+                                <RefreshCw size={13} className="animate-spin" />
+                              ) : (
+                                <Send size={13} className="rotate-180" />
+                              )}
+                              <span>ارسال پیامک تست</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* CARD 2: n8n Webhook Engine */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-emerald-600/20 text-emerald-400 flex items-center justify-center font-bold">
+                                <Zap size={16} />
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-white">موتور ارتباط با n8n (Webhook)</h4>
+                                <span className="text-[10px] text-slate-400">شلیک رویدادها و دریافت پاسخ ایجنت</span>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                              <span>پینگ: {n8nPing}ms</span>
+                            </div>
+                          </div>
+
+                          {/* Webhook URL */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">آدرس وب‌هوک n8n (Webhook URL):</label>
+                            <input
+                              type="text"
+                              value={n8nWebhookUrl}
+                              onChange={e => setN8nWebhookUrl(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-slate-200 font-mono text-left focus:outline-none focus:border-purple-600"
+                              dir="ltr"
+                            />
+                          </div>
+
+                          {/* Secret Token */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">کلید اعتبارسنجی هدر (Secret Token):</label>
+                            <div className="relative">
+                              <KeyRound size={13} className="absolute right-3 top-2.5 text-slate-500" />
+                              <input
+                                type="text"
+                                value={n8nSecretToken}
+                                onChange={e => setN8nSecretToken(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl pr-8 pl-3 py-1.5 text-xs text-purple-300 font-mono focus:outline-none focus:border-purple-600 text-left"
+                                dir="ltr"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Delivery Mode */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">روش ارسال رویدادها:</label>
+                            <div className="grid grid-cols-2 gap-2 text-xs">
+                              <button
+                                type="button"
+                                onClick={() => setN8nDeliveryMode('async_queue')}
+                                className={`p-2 rounded-xl border text-center transition-all ${
+                                  n8nDeliveryMode === 'async_queue'
+                                    ? 'bg-purple-950/60 border-purple-500 text-white font-bold'
+                                    : 'bg-slate-950 border-slate-800 text-slate-400'
+                                }`}
+                              >
+                                <span className="block text-[11px]">در صف پس‌زمینه</span>
+                                <span className="text-[9px] text-purple-300">بدون کندی سرعت سایت</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setN8nDeliveryMode('sync_realtime')}
+                                className={`p-2 rounded-xl border text-center transition-all ${
+                                  n8nDeliveryMode === 'sync_realtime'
+                                    ? 'bg-purple-950/60 border-purple-500 text-white font-bold'
+                                    : 'bg-slate-950 border-slate-800 text-slate-400'
+                                }`}
+                              >
+                                <span className="block text-[11px]">ارسال همگام (Sync)</span>
+                                <span className="text-[9px] text-slate-400">انتظار برای خروجی n8n</span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Test Connection Button */}
+                        <div className="pt-3 border-t border-slate-800/80">
+                          <button
+                            onClick={handleTestN8n}
+                            disabled={isTestingN8n}
+                            className="w-full bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                          >
+                            {isTestingN8n ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Zap size={14} />
+                            )}
+                            <span>تست پینگ اتصال (Test Connection)</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* CARD 3: Telegram Bot Integration */}
+                      <div className="bg-slate-900 border border-slate-800 rounded-3xl p-5 shadow-sm space-y-4 flex flex-col justify-between">
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                            <div className="flex items-center gap-2">
+                              <div className="w-8 h-8 rounded-xl bg-sky-600/20 text-sky-400 flex items-center justify-center font-bold">
+                                <Send size={16} />
+                              </div>
+                              <div>
+                                <h4 className="text-xs font-bold text-white">ربات تلگرام / پیام‌رسان</h4>
+                                <span className="text-[10px] text-slate-400">هشدارهای فوری به مدیر و ادمین‌ها</span>
+                              </div>
+                            </div>
+                            <span className="text-[10px] bg-sky-500/20 text-sky-300 px-2 py-0.5 rounded-full font-bold">
+                              Telegram Bot API
+                            </span>
+                          </div>
+
+                          {/* Bot Token */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">توکن اختصاصی ربات (Bot Token):</label>
+                            <input
+                              type="password"
+                              value={telegramBotToken}
+                              onChange={e => setTelegramBotToken(e.target.value)}
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-sky-300 font-mono text-left focus:outline-none focus:border-purple-600"
+                              dir="ltr"
+                            />
+                          </div>
+
+                          {/* Admin Chat ID */}
+                          <div>
+                            <label className="text-[11px] font-bold text-slate-300 block mb-1">شناسه چت ادمین (Admin Chat ID):</label>
+                            <input
+                              type="text"
+                              value={telegramAdminChatId}
+                              onChange={e => setTelegramAdminChatId(e.target.value)}
+                              placeholder="108293847"
+                              className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-1.5 text-xs text-white font-mono text-left focus:outline-none focus:border-purple-600"
+                              dir="ltr"
+                            />
+                          </div>
+
+                          {/* Proxy Config */}
+                          <div className="grid grid-cols-2 gap-2 text-xs">
+                            <div>
+                              <label className="text-[10px] text-slate-400 block mb-1">نوع پروکسی سرور:</label>
+                              <select
+                                value={telegramProxyType}
+                                onChange={e => setTelegramProxyType(e.target.value as any)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-[11px] text-white"
+                              >
+                                <option value="socks5">SOCKS5 Proxy</option>
+                                <option value="direct">مستقیم (سرور خارجی)</option>
+                                <option value="mtproto">MTProto Proxy</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[10px] text-slate-400 block mb-1">آدرس پروکسی داخلی:</label>
+                              <input
+                                type="text"
+                                value={telegramProxyUrl}
+                                onChange={e => setTelegramProxyUrl(e.target.value)}
+                                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-2 py-1.5 text-[10px] text-slate-400 font-mono text-left"
+                                dir="ltr"
+                              />
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Test Telegram Button */}
+                        <div className="pt-3 border-t border-slate-800/80">
+                          <button
+                            onClick={handleSendTelegramTest}
+                            disabled={isSendingTelegramTest}
+                            className="w-full bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white py-2 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-2 shadow-sm"
+                          >
+                            {isSendingTelegramTest ? (
+                              <RefreshCw size={14} className="animate-spin" />
+                            ) : (
+                              <Send size={14} />
+                            )}
+                            <span>ارسال پیام تست به تلگرام 🔔</span>
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  </div>
+
+                  {/* ========================================================= */}
+                  {/* 2. MCP SERVER ENDPOINT & AGENT REST TOOLS                */}
+                  {/* ========================================================= */}
+                  <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm space-y-5">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <Server className="text-purple-400" size={18} />
+                          <h3 className="text-sm font-bold text-white">آدرس سرور MCP اختصاصی سایت و توانایی‌های REST</h3>
+                        </div>
+                        <p className="text-xs text-slate-400 mt-1">
+                          این اندپوینت ابزارهای استاندارد MCP را در اختیار ایجنت هوش مصنوعی در n8n قرار می‌دهد.
+                        </p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
                         <button
                           onClick={() => {
-                            navigator.clipboard.writeText('https://your-store.com/wp-json/automation-hub/v1/mcp');
-                            setCopiedEndpoint(true);
-                            setTimeout(() => setCopiedEndpoint(false), 2000);
-                            showToast('لینک اندپوینت کپی شد!');
+                            handleTestN8n();
                           }}
-                          className="p-1 hover:bg-slate-800 rounded text-slate-400"
+                          className="bg-slate-800 hover:bg-slate-700 text-purple-300 border border-purple-800/40 px-3.5 py-1.5 rounded-xl text-xs font-bold"
                         >
-                          {copiedEndpoint ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />}
+                          تست ارتباط با n8n ⚡
                         </button>
+                      </div>
+                    </div>
+
+                    {/* Endpoint & Bearer Token Grid */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-bold block text-[11px]">آدرس اندپوینت سرور MCP:</label>
+                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                          <code className="text-purple-300 font-mono flex-1 overflow-x-auto text-left" dir="ltr">
+                            https://your-store.com/wp-json/automation-hub/v1/mcp
+                          </code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText('https://your-store.com/wp-json/automation-hub/v1/mcp');
+                              setCopiedEndpoint(true);
+                              setTimeout(() => setCopiedEndpoint(false), 2000);
+                              showToast('لینک سرور MCP کپی شد!');
+                            }}
+                            className="p-1 hover:bg-slate-800 rounded text-slate-400"
+                            title="کپی لینک"
+                          >
+                            {copiedEndpoint ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-slate-400 font-bold block text-[11px]">کلید دسترسی امن (Bearer Token):</label>
+                        <div className="flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-xl px-3 py-2">
+                          <code className="text-emerald-400 font-mono flex-1 overflow-x-auto text-left" dir="ltr">
+                            {mcpBearerToken}
+                          </code>
+                          <button
+                            onClick={() => {
+                              navigator.clipboard.writeText(mcpBearerToken);
+                              setCopiedToken(true);
+                              setTimeout(() => setCopiedToken(false), 2000);
+                              showToast('توکن امنیتی Bearer کپی شد!');
+                            }}
+                            className="p-1 hover:bg-slate-800 rounded text-slate-400"
+                            title="کپی توکن"
+                          >
+                            {copiedToken ? <Check size={15} className="text-emerald-400" /> : <Copy size={15} />}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Agent REST Abilities Cards */}
+                    <div>
+                      <span className="text-xs font-bold text-slate-300 block mb-2.5">مدیریت دسترسی و سقف مجاز ابزارهای REST ایجنت:</span>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                        
+                        {/* Tool 1 */}
+                        <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs">۱. جستجوی متغیرهای ووکامرس</span>
+                            <input
+                              type="checkbox"
+                              checked={mcpTools.productSearch}
+                              onChange={e => setMcpTools({ ...mcpTools, productSearch: e.target.checked })}
+                              className="accent-purple-600 scale-110 cursor-pointer"
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-400">استعلام موجودی، سایز، رنگ و قیمت لحظه‌ای انبار.</p>
+                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-2 py-0.5 rounded-md inline-block font-mono">
+                            wc/v3/products
+                          </span>
+                        </div>
+
+                        {/* Tool 2: Dynamic Coupon */}
+                        <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs">۲. ساخت کوپن تخفیف پویا</span>
+                            <input
+                              type="checkbox"
+                              checked={mcpTools.dynamicCoupon}
+                              onChange={e => setMcpTools({ ...mcpTools, dynamicCoupon: e.target.checked })}
+                              className="accent-purple-600 scale-110 cursor-pointer"
+                            />
+                          </div>
+                          <div className="flex items-center justify-between text-[11px] text-slate-300">
+                            <span>سقف مجاز ایجنت:</span>
+                            <span className="font-mono text-purple-400 font-bold">{maxDiscountPercent}٪</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="5"
+                            max="50"
+                            value={maxDiscountPercent}
+                            onChange={e => setMaxDiscountPercent(Number(e.target.value))}
+                            className="w-full accent-purple-600 cursor-pointer"
+                          />
+                        </div>
+
+                        {/* Tool 3: Persian WC Tracking */}
+                        <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs">۳. رهگیری ووکامرس فارسی</span>
+                            <input
+                              type="checkbox"
+                              checked={mcpTools.persianWCTracking}
+                              onChange={e => setMcpTools({ ...mcpTools, persianWCTracking: e.target.checked })}
+                              className="accent-purple-600 scale-110 cursor-pointer"
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-400">استعلام کد ۲۴ رقمی پست پیشتاز (`class-persian-wc.php`).</p>
+                          <span className="text-[10px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-md inline-block font-mono">
+                            persian_wc_track
+                          </span>
+                        </div>
+
+                        {/* Tool 4: CRM Tags */}
+                        <div className="bg-slate-950 border border-slate-800 p-3.5 rounded-2xl space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-bold text-white text-xs">۴. خواندن و برچسب‌گذاری CRM</span>
+                            <input
+                              type="checkbox"
+                              checked={mcpTools.crmTags}
+                              onChange={e => setMcpTools({ ...mcpTools, crmTags: e.target.checked })}
+                              className="accent-purple-600 scale-110 cursor-pointer"
+                            />
+                          </div>
+                          <p className="text-[11px] text-slate-400">ثبت برچسب‌های استخراج‌شده از گفتگو و ارزیابی ریسک ریزش.</p>
+                          <span className="text-[10px] bg-blue-500/20 text-blue-300 px-2 py-0.5 rounded-md inline-block font-mono">
+                            crm_tag_update
+                          </span>
+                        </div>
+
                       </div>
                     </div>
                   </div>
 
-                  {/* Human-in-the-Loop Approvals */}
+                  {/* ========================================================= */}
+                  {/* 3. HUMAN-IN-THE-LOOP APPROVALS                            */}
+                  {/* ========================================================= */}
                   <div className="bg-slate-900 border border-amber-600/30 rounded-3xl p-6 shadow-sm">
                     <div className="flex items-center justify-between mb-4">
                       <div>
                         <h3 className="text-base font-bold text-white flex items-center gap-2">
                           <AlertTriangle className="text-amber-400" size={18} />
-                          کارتابل در انتظار تأیید انسانی (Human-in-the-Loop)
+                          کارتابل در انتظار تأیید انسانی (Human-in-the-Loop - HITL)
                         </h3>
-                        <p className="text-xs text-slate-400 mt-1">عملیات حساس پیشنهادشده توسط ایجنت n8n که نیاز به اجازه مدیر دارد.</p>
+                        <p className="text-xs text-slate-400 mt-1">عملیات حساس پیشنهادشده توسط ایجنت n8n که نیاز به اجازه صریح مدیر دارد.</p>
                       </div>
                       <span className="bg-amber-500/20 text-amber-300 text-xs px-2.5 py-1 rounded-full font-bold">
                         {approvalCards.length} عملیات معلق
@@ -1759,7 +2395,7 @@ export default function App() {
                             <button
                               onClick={() => {
                                 setApprovalCards(prev => prev.filter(c => c.id !== card.id));
-                                showToast('عملیات با موفقیت تأیید شد.');
+                                showToast('عملیات با موفقیت تأیید و در سیستم اعمال شد.');
                               }}
                               className="bg-emerald-600 hover:bg-emerald-700 text-white px-3.5 py-2 rounded-xl text-xs font-bold"
                             >
@@ -1768,7 +2404,7 @@ export default function App() {
                             <button
                               onClick={() => {
                                 setApprovalCards(prev => prev.filter(c => c.id !== card.id));
-                                showToast('درخواست رد گردید.');
+                                showToast('درخواست توسط مدیر رد گردید.');
                               }}
                               className="bg-slate-800 hover:bg-rose-600 text-slate-300 hover:text-white px-3 py-2 rounded-xl text-xs font-bold"
                             >
@@ -1780,9 +2416,28 @@ export default function App() {
                     </div>
                   </div>
 
-                  {/* Queue & Logger Table */}
+                  {/* ========================================================= */}
+                  {/* 4. QUEUE & LOGGER HUB WITH REPLAY ACTION                  */}
+                  {/* ========================================================= */}
                   <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 shadow-sm">
-                    <h3 className="text-base font-bold text-white mb-3">صف پردازش و لاگ‌ها (Queue & Logger)</h3>
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <h3 className="text-base font-bold text-white flex items-center gap-2">
+                          <Clock className="text-purple-400" size={17} />
+                          <span>صف پردازش، مانیتورینگ رویدادها و لاگ‌ها (Queue & Logger Hub)</span>
+                        </h3>
+                        <p className="text-xs text-slate-400 mt-0.5">ثبت زنده کلیه تعاملات پیامکی، وب‌هوک‌های n8n و تلگرام با قابلیت شلیک مجدد (Replay).</p>
+                      </div>
+
+                      <button
+                        onClick={() => showToast('صف پردازش و لاگ‌ها به‌روزرسانی شد.')}
+                        className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-xl text-xs flex items-center gap-1.5"
+                      >
+                        <RefreshCw size={13} />
+                        <span>بروزرسانی</span>
+                      </button>
+                    </div>
+
                     <div className="overflow-x-auto">
                       <table className="w-full text-right text-xs">
                         <thead>
@@ -1791,12 +2446,13 @@ export default function App() {
                             <th className="py-2.5 px-3">رویداد</th>
                             <th className="py-2.5 px-3">وضعیت</th>
                             <th className="py-2.5 px-3">زمان پاسخ</th>
+                            <th className="py-2.5 px-3">زمان ثبت</th>
                             <th className="py-2.5 px-3 text-left">عملیات</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-800/60">
                           {queueLogs.map(item => (
-                            <tr key={item.id} className="hover:bg-slate-800/40">
+                            <tr key={item.id} className="hover:bg-slate-800/40 transition-colors">
                               <td className="py-2.5 px-3 font-mono font-bold text-slate-300">#{item.id}</td>
                               <td className="py-2.5 px-3 text-white font-medium">{item.trigger}</td>
                               <td className="py-2.5 px-3">
@@ -1807,14 +2463,24 @@ export default function App() {
                                 </span>
                               </td>
                               <td className="py-2.5 px-3 font-mono text-slate-400">{item.latency}</td>
+                              <td className="py-2.5 px-3 text-slate-400 text-[11px]">{item.time}</td>
                               <td className="py-2.5 px-3 text-left">
-                                <button
-                                  onClick={() => setSelectedPayload(item)}
-                                  className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
-                                  title="مشاهده JSON"
-                                >
-                                  <FileCode size={14} />
-                                </button>
+                                <div className="flex items-center justify-end gap-1.5">
+                                  <button
+                                    onClick={() => handleReplayLog(item)}
+                                    className="p-1.5 bg-slate-800 hover:bg-purple-600 text-slate-300 hover:text-white rounded-lg text-xs transition-all"
+                                    title="شلیک مجدد رویداد (Replay)"
+                                  >
+                                    <Play size={13} />
+                                  </button>
+                                  <button
+                                    onClick={() => setSelectedPayload(item)}
+                                    className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs"
+                                    title="مشاهده JSON Payload"
+                                  >
+                                    <FileCode size={13} />
+                                  </button>
+                                </div>
                               </td>
                             </tr>
                           ))}
