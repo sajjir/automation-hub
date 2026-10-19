@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="fa" dir="rtl" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Automation Hub Pro — نسخه مستقل دمو مارکت ژاکت</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#f5f3ff',
+              500: '#8b5cf6',
+              600: '#7c3aed',
+              700: '#6d28d9',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <!-- Vazirmatn Font -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Vazirmatn:wght@300;400;500;600;700;800;900&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    * { font-family: 'Vazirmatn', sans-serif; }
+    code, pre, .font-mono { font-family: 'JetBrains Mono', monospace; }
+  </style>
+</head>
+<body class="bg-slate-950 text-slate-100 antialiased min-h-screen">
+  
+  <!-- Top Navigation & View Switcher -->
+  <header class="sticky top-0 z-40 bg-slate-900/90 backdrop-blur-md border-b border-slate-800 px-6 py-3 flex flex-col md:flex-row items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <div class="w-9 h-9 rounded-xl bg-purple-600 flex items-center justify-center font-bold text-white text-lg">⚡</div>
+      <div>
+        <h1 class="text-base font-bold text-white">Automation Hub Pro <span class="text-[11px] bg-purple-500/20 text-purple-300 px-2 py-0.5 rounded-full font-mono">v1.2</span></h1>
+        <p class="text-xs text-slate-400">هاب اتوماسیون هوشمند و ایجنتیک ووکامرس (نسخه تک‌فایل HTML ژاکت)</p>
+      </div>
+    </div>
+
+    <!-- Mode Switcher -->
+    <div class="flex items-center p-1 bg-slate-800 rounded-xl border border-slate-700">
+      <button id="btn-view-admin" onclick="switchView('admin')" class="px-4 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white transition-all">
+        پیشخوان مدیریت افزونه در وردپرس
+      </button>
+      <button id="btn-view-store" onclick="switchView('store')" class="px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all">
+        پیش‌نمایش زنده صفحه محصول (PDP)
+      </button>
+    </div>
+
+    <div class="flex items-center gap-2 text-xs">
+      <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+      <span class="text-slate-300">اتصال n8n: <span class="text-emerald-400 font-mono font-bold">18ms</span></span>
+    </div>
+  </header>
+
+  <!-- VIEW 1: ADMIN DASHBOARD -->
+  <div id="view-admin" class="max-w-7xl mx-auto px-6 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      
+      <!-- Sidebar -->
+      <aside class="lg:col-span-3 space-y-2">
+        <div class="bg-slate-900 border border-slate-800 rounded-2xl p-3">
+          <nav class="space-y-1">
+            <button onclick="switchTab('mcp')" id="tab-btn-mcp" class="w-full text-right p-3 rounded-xl text-xs font-bold bg-purple-600 text-white flex justify-between items-center">
+              <span>🖥️ سرور MCP و ابزارهای REST</span>
+              <span class="text-[10px] bg-purple-400/20 px-1.5 py-0.5 rounded">Core</span>
+            </button>
+            <button onclick="switchTab('pdp')" id="tab-btn-pdp" class="w-full text-right p-3 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
+              <span>✨ مشاور هوشمند صفحه محصول</span>
+              <span class="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.5 rounded">PDP</span>
+            </button>
+            <button onclick="switchTab('otp')" id="tab-btn-otp" class="w-full text-right p-3 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
+              <span>💬 چت‌بات و احراز هویت پیامکی</span>
+              <span class="text-[10px] bg-blue-500/20 text-blue-300 px-1.5 py-0.5 rounded">OTP</span>
+            </button>
+            <button onclick="switchTab('crm')" id="tab-btn-crm" class="w-full text-right p-3 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
+              <span>👥 پروفایل ۳۶۰ درجه مشتریان</span>
+              <span class="text-[10px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded">CRM</span>
+            </button>
+            <button onclick="switchTab('queue')" id="tab-btn-queue" class="w-full text-right p-3 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center">
+              <span>⏱️ صف، لاگ‌ها و تأیید انسانی</span>
+              <span class="text-[10px] bg-rose-500 text-white px-1.5 py-0.5 rounded-full font-mono">2</span>
+            </button>
+          </nav>
+        </div>
+      </aside>
+
+      <!-- Main Admin Content -->
+      <main class="lg:col-span-9 space-y-6">
+        
+        <!-- Sub-Tab: MCP -->
+        <div id="content-mcp" class="space-y-6">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-white mb-2">آدرس سرور MCP اختصاصی سایت (Model Context Protocol)</h3>
+            <p class="text-xs text-slate-400 mb-4">جهت اتصال n8n به عنوان Provider برای ایجنت‌های هوش مصنوعی.</p>
+            <div class="bg-slate-950 border border-slate-800 rounded-xl p-3 flex justify-between items-center text-xs">
+              <code class="text-purple-300 font-mono" dir="ltr">https://your-store.com/wp-json/automation-hub/v1/mcp</code>
+              <button onclick="alert('لینک اندپوینت کپی شد!')" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-1 rounded-lg">کپی</button>
+            </div>
+          </div>
+
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-white mb-3">توانایی‌های ایجنت (REST Tools):</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs">
+              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                <div>
+                  <div class="font-bold text-white">۱. جستجوی زنده متغیرهای ووکامرس</div>
+                  <div class="text-[11px] text-slate-400">استعلام رنگ، سایز و موجودی انبار</div>
+                </div>
+                <span class="text-emerald-400 font-bold">فعال ✓</span>
+              </div>
+              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                <div>
+                  <div class="font-bold text-white">۲. ساخت کوپن تخفیف پویا</div>
+                  <div class="text-[11px] text-slate-400">سقف مجاز: ۲۰٪ تخفیف</div>
+                </div>
+                <span class="text-emerald-400 font-bold">فعال ✓</span>
+              </div>
+              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                <div>
+                  <div class="font-bold text-white">۳. رهگیری پستی ووکامرس فارسی</div>
+                  <div class="text-[11px] text-slate-400">استعلام کد ۲۴ رقمی پست پیشتاز</div>
+                </div>
+                <span class="text-emerald-400 font-bold">فعال ✓</span>
+              </div>
+              <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center">
+                <div>
+                  <div class="font-bold text-white">۴. برچسب‌گذاری هوشمند CRM</div>
+                  <div class="text-[11px] text-slate-400">ثبت ویژگی‌های خرید در usermeta</div>
+                </div>
+                <span class="text-emerald-400 font-bold">فعال ✓</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-Tab: PDP Settings -->
+        <div id="content-pdp" class="space-y-6 hidden">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-white mb-2">محل نمایش باکس مشاور هوشمند در صفحه تکی محصول:</h3>
+            <div class="bg-purple-950/40 border border-purple-500/50 p-3.5 rounded-xl text-xs text-white">
+              ✓ دقیقاً زیر دکمه افزودن به سبد خرید (woocommerce_after_add_to_cart_button) — بیشترین نرخ تبدیل
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-Tab: OTP -->
+        <div id="content-otp" class="space-y-6 hidden">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-white mb-2">تنظیمات درگاه پیامک احراز هویت:</h3>
+            <p class="text-xs text-slate-400">متصل به ملی پیامک (MeliWoo) با اعتبارسنجی زنده شماره‌های ایران.</p>
+          </div>
+        </div>
+
+        <!-- Sub-Tab: CRM -->
+        <div id="content-crm" class="space-y-6 hidden">
+          <div class="bg-slate-900 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-white mb-2">پروفایل ۳۶۰ درجه مشتریان (AI Lead Profiling)</h3>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs">
+              <div class="font-bold text-white">مهدی کریمی (09124458921)</div>
+              <div class="text-slate-400 mt-1">تگ‌های استخراج شده: [حساس به باتری] [خریدار VIP]</div>
+              <div class="mt-2 text-purple-300">تحلیل ایجنت: این مشتری به شدت روی دوام شارژ هدفون تاکید دارد و پتانسیل خرید نسخه مشکی را داراست.</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Sub-Tab: Queue -->
+        <div id="content-queue" class="space-y-6 hidden">
+          <div class="bg-slate-900 border border-amber-600/30 rounded-2xl p-6">
+            <h3 class="text-sm font-bold text-white mb-2">کارتابل در انتظار تأیید انسانی (Human-in-the-Loop):</h3>
+            <div class="bg-slate-950 p-4 rounded-xl border border-slate-800 flex justify-between items-center text-xs">
+              <div>
+                <span class="font-bold text-white">علی رضایی (خرید ۱۸ میلیون تومان):</span>
+                <span class="text-slate-400 block mt-1">ایجنت قصد دارد به دلیل تاخیر پستی، کوپن تخفیف ۲۵٪ صادر کند.</span>
+              </div>
+              <button onclick="alert('تأیید شد!')" class="bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg font-bold">تأیید و صدور</button>
+            </div>
+          </div>
+        </div>
+
+      </main>
+    </div>
+  </div>
+
+  <!-- VIEW 2: STOREFRONT DEMO -->
+  <div id="view-store" class="max-w-5xl mx-auto px-6 py-6 hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      
+      <!-- Product Showcase -->
+      <div class="lg:col-span-5 bg-slate-900 border border-slate-800 rounded-3xl p-6 text-center space-y-4">
+        <div class="w-48 h-48 mx-auto rounded-full border-8 border-slate-800 bg-slate-950 flex flex-col items-center justify-center">
+          <span class="font-black text-slate-300 font-mono text-sm">SONY</span>
+          <span class="text-xs text-purple-400 font-mono">WH-1000XM5</span>
+        </div>
+        <div class="text-sm font-bold text-white">هدفون بی‌سیم نویزکنسلینگ سونی</div>
+        <div class="text-xs text-emerald-400 font-mono font-bold">۱۹,۸۰۰,۰۰۰ تومان</div>
+        <button onclick="alert('به سبد خرید اضافه شد!')" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white py-3 rounded-xl font-bold text-xs">
+          افزودن به سبد خرید
+        </button>
+      </div>
+
+      <!-- AI Advisor Box (PDP) -->
+      <div class="lg:col-span-7 bg-gradient-to-br from-slate-900 to-purple-950/30 border-2 border-purple-500/40 rounded-3xl p-6 space-y-3">
+        <div class="flex items-center gap-2">
+          <span class="text-purple-400 font-bold">✨ مشاور هوشمند این محصول (پاسخگویی آنی با AI)</span>
+        </div>
+        <p class="text-xs text-slate-300">هر سؤالی درباره شارژدهی، میکروفون یا گارانتی دارید بپرسید:</p>
+        
+        <div class="flex flex-wrap gap-2 text-xs">
+          <button onclick="askQuestion('باتری این هدفون چند ساعت جواب می‌دهد؟')" class="bg-slate-950 text-purple-200 border border-purple-800/40 px-3 py-1.5 rounded-xl hover:bg-purple-600 hover:text-white">
+            🔋 باتری چند ساعت کار می‌کند؟
+          </button>
+          <button onclick="askQuestion('کیفیت میکروفون برای تماس کاری چطور است؟')" class="bg-slate-950 text-purple-200 border border-purple-800/40 px-3 py-1.5 rounded-xl hover:bg-purple-600 hover:text-white">
+            🎙️ کیفیت میکروفون در محیط شلوغ
+          </button>
+        </div>
+
+        <div id="advisor-chat" class="bg-slate-950 p-4 rounded-2xl border border-slate-800 text-xs text-slate-200 min-h-24 space-y-2">
+          <div class="text-slate-400">سلام! من پاسخگوی هوشمند مشخصات هدفون سونی هستم. روی سوالات بالا کلیک کنید تا پاسخ فنی را مشاهده فرمایید.</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script>
+    function switchView(mode) {
+      const vAdmin = document.getElementById('view-admin');
+      const vStore = document.getElementById('view-store');
+      const bAdmin = document.getElementById('btn-view-admin');
+      const bStore = document.getElementById('btn-view-store');
+
+      if (mode === 'admin') {
+        vAdmin.classList.remove('hidden');
+        vStore.classList.add('hidden');
+        bAdmin.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-purple-600 text-white transition-all';
+        bStore.className = 'px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+      } else {
+        vAdmin.classList.add('hidden');
+        vStore.classList.remove('hidden');
+        bStore.className = 'px-4 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 text-white transition-all';
+        bAdmin.className = 'px-4 py-1.5 rounded-lg text-xs font-bold text-slate-400 hover:text-white transition-all';
+      }
+    }
+
+    function switchTab(tab) {
+      const tabs = ['mcp', 'pdp', 'otp', 'crm', 'queue'];
+      tabs.forEach(t => {
+        const el = document.getElementById('content-' + t);
+        const btn = document.getElementById('tab-btn-' + t);
+        if (el) el.classList.add('hidden');
+        if (btn) {
+          btn.className = 'w-full text-right p-3 rounded-xl text-xs font-bold text-slate-400 hover:bg-slate-800 flex justify-between items-center';
+        }
+      });
+
+      const activeEl = document.getElementById('content-' + tab);
+      const activeBtn = document.getElementById('tab-btn-' + tab);
+      if (activeEl) activeEl.classList.remove('hidden');
+      if (activeBtn) activeBtn.className = 'w-full text-right p-3 rounded-xl text-xs font-bold bg-purple-600 text-white flex justify-between items-center';
+    }
+
+    function askQuestion(q) {
+      const box = document.getElementById('advisor-chat');
+      box.innerHTML = '<div class="text-purple-400 font-bold">شما: ' + q + '</div><div class="text-slate-300 mt-2">ایجنت هوش مصنوعی: در حال تایپ پاسخ مستند...</div>';
+      setTimeout(() => {
+        let answer = '';
+        if (q.includes('باتری')) {
+          answer = '🔋 با نویزکنسلینگ روشن دقیقاً ۳۰ ساعت و با خاموش بودن تا ۴۰ ساعت شارژدهی مداوم دارد. با ۳ دقیقه شارژ سریع، ۳ ساعت آهنگ پخش می‌کند.';
+        } else {
+          answer = '🎙️ این هدفون ۸ میکروفون مجزا دارد که با هوش مصنوعی و دو پردازنده V1 و QN1 صدای باد و نویز محیط را فیلتر کرده و صدای شفاف ارائه می‌دهد.';
+        }
+        box.innerHTML = '<div class="text-purple-400 font-bold">شما: ' + q + '</div><div class="bg-purple-950/40 p-3 rounded-xl border border-purple-800/40 text-slate-100 mt-2 leading-relaxed">' + answer + '</div>';
+      }, 500);
+    }
+  </script>
+</body>
+</html>

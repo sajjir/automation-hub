@@ -1,0 +1,8 @@
+{
+  "name": "Automation Hub (WordPress & n8n Bridge Pro)",
+  "description": "Smart automation bridge connecting WooCommerce and WordPress events to n8n, Telegram, and SMS panels with dynamic rules, delayed queues, OTP auth, and live event monitoring.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
